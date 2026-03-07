@@ -25,11 +25,11 @@ typedef struct Perf_Stat
     const char* name;
     const char* file;
     s32 line;
-    dyna f32* durations;
+    dyna f64* durations;
     
     // absolute min and max
-    f32 min;
-    f32 max;
+    f64 min;
+    f64 max;
     
     s32 write_index;
     s32 read_index;
@@ -168,7 +168,7 @@ void perf_stat_end(const char* name)
     if (cf_map_has(s_app->perf_stats, name))
     {
         Perf_Stat* perf = cf_map_get_ptr(s_app->perf_stats, name);
-        f32 duration_us = (f32)cf_stopwatch_microseconds(perf->stopwatch);
+        f64 duration_us = (f64)cf_stopwatch_microseconds(perf->stopwatch);
         perf->durations[perf->write_index] = duration_us;
         perf->write_index = (perf->write_index + 1) % cf_array_count(perf->durations);
         if (perf->read_index == perf->write_index)

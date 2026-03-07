@@ -2283,13 +2283,13 @@ b32 ui_handle_scrollbar(UI_Item* item, f32* value, f32 min, f32 max, f32 rate)
     CF_V2 offset = cf_v2(0, 0);
     if (is_horizontal)
     {
-        offset.x = cf_remap(*value, min, max, 0.0f, 1.0f) * cf_width(item->interactable_aabb);
-        offset.x = cf_min(offset.x, item->interactable_aabb.max.x - knob_extents.x);
+        offset.x = cf_remap(*value, min, max, 0.0f, 1.0f) * cf_width(item->interactable_aabb) - knob_extents.x * 0.5f;
+        offset.x = cf_clamp(offset.x, item->interactable_aabb.min.x, item->interactable_aabb.max.x - knob_extents.x);
     }
     else
     {
-        offset.y = cf_remap(*value, min, max, 0.0f, -1.0f) * cf_height(item->interactable_aabb);
-        offset.y = cf_max(offset.y, item->interactable_aabb.min.y + knob_extents.y);
+        offset.y = cf_remap(*value, min, max, 0.0f, -1.0f) * cf_height(item->interactable_aabb) + knob_extents.x * 0.5f;
+        offset.y = cf_clamp(offset.y, item->interactable_aabb.min.y + knob_extents.y, item->interactable_aabb.max.y);
     }
     item->text_aabb = move_aabb(item->text_aabb, offset);
     

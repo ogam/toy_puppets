@@ -1509,7 +1509,7 @@ void game_ui_do_inventory()
     
     ui_push_layout_corner_radius(10.0f);
     ui_push_layout_background_color(cf_color_black());
-    UI_Layout* layout = ui_layout_begin("Shop");
+    UI_Layout* layout = ui_layout_begin("Inventory");
     ui_pop_layout_background_color();
     ui_pop_layout_corner_radius();
     
@@ -2432,8 +2432,8 @@ void game_ui_do_debug_stats()
             s32 last_write_index = perf_stat->write_index - 1 + cf_array_count(perf_stat->durations);
             last_write_index = last_write_index % cf_array_count(perf_stat->durations);
             
-            f32 current = perf_stat->durations[last_write_index];
-            f32 running_avg = 0.0f;
+            f64 current = perf_stat->durations[last_write_index];
+            f64 running_avg = 0.0;
             s32 next_read_index = perf_stat->read_index;
             s32 count = 0;
             
