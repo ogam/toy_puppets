@@ -1,0 +1,5 @@
+.*
+build/
+build_web/
+*.4coder
+imgui.ini
