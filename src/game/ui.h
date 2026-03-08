@@ -271,11 +271,7 @@ typedef struct UI
     u64 down_hash;
     u64 release_hash;
     
-    struct
-    {
-        CF_Mesh mesh;
-        
-    } draw;
+    b32 debug;
 } UI;
 
 void init_ui();
@@ -371,7 +367,7 @@ b32 ui_do_color_wheel(CF_Color* color);
 void ui_do_same_line();
 
 // misc
-
 void ui_register_text_effect(const char* name, CF_TextEffectFn* draw_callback, CF_TextEffectFn* hover_callback);
+void ui_debug_view();
 
 #endif //UI_H

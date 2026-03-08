@@ -78,6 +78,7 @@ enum
     Debug_State_Stats,
     Debug_State_Body_Bounds,
     Debug_State_Animation_Tool,
+    Debug_State_UI,
 };
 
 typedef u8 Cursor_State;
@@ -845,6 +846,11 @@ void update(void* udata)
     if (cf_key_just_pressed(CF_KEY_F3))
     {
         BIT_TOGGLE(s_app->debug_state, Debug_State_Animation_Tool);
+    }
+    if (cf_key_just_pressed(CF_KEY_F4))
+    {
+        BIT_TOGGLE(s_app->debug_state, Debug_State_UI);
+        s_app->ui.debug = BIT_IS_SET(s_app->debug_state, Debug_State_UI);
     }
     
     PERF(draw_world)

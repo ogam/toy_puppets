@@ -2215,26 +2215,32 @@ ENUM(PREFIX, Count)
         
         if (tab == Options_Tab_Audio)
         {
-            CF_V2 name_extents = content_extents;
-            CF_V2 value_extents = content_extents;
-            name_extents.x *= 0.25f;
-            value_extents.x *= 0.75f;
-            
-            ui_child_layout_begin(name_extents);
-            ui_do_text("Master");
-            ui_do_text("Music");
-            ui_do_text("Sfx");
-            ui_do_text("UI");
-            ui_child_layout_end();
-            
-            ui_do_same_line();
-            ui_child_layout_begin(value_extents);
-            game_ui_do_slider(&audio->volume.master, 0.0f, 1.0f, 0.01f);
-            game_ui_do_slider(&audio->volume.music, 0.0f, 1.0f, 0.01f);
-            game_ui_do_slider(&audio->volume.sfx, 0.0f, 1.0f, 0.01f);
-            game_ui_do_slider(&audio->volume.ui, 0.0f, 1.0f, 0.01f);
-            ui_child_layout_end();
-            
+            UI_Layout* layout = ui_child_layout_begin(content_extents);
+            BIT_SET(layout->state, UI_Layout_State_Fit_To_Item_Aabb_Y);
+            {
+                CF_V2 name_extents = content_extents;
+                CF_V2 value_extents = content_extents;
+                name_extents.x *= 0.25f;
+                value_extents.x *= 0.75f;
+                
+                UI_Layout* child_layout = ui_child_layout_begin(name_extents);
+                BIT_SET(child_layout->state, UI_Layout_State_Fit_To_Item_Aabb_Y);
+                ui_do_text("Master");
+                ui_do_text("Music");
+                ui_do_text("Sfx");
+                ui_do_text("UI");
+                ui_child_layout_end();
+                
+                ui_do_same_line();
+                child_layout = ui_child_layout_begin(value_extents);
+                BIT_SET(child_layout->state, UI_Layout_State_Fit_To_Item_Aabb_Y);
+                game_ui_do_slider(&audio->volume.master, 0.0f, 1.0f, 0.01f);
+                game_ui_do_slider(&audio->volume.music, 0.0f, 1.0f, 0.01f);
+                game_ui_do_slider(&audio->volume.sfx, 0.0f, 1.0f, 0.01f);
+                game_ui_do_slider(&audio->volume.ui, 0.0f, 1.0f, 0.01f);
+                ui_child_layout_end();
+            }
+            ui_layout_end();
         } 
         else if (tab == Options_Tab_Gameplay)
         {

@@ -326,6 +326,11 @@ void ui_begin()
 
 void ui_end()
 {
+    if (s_app->ui.debug)
+    {
+        ui_debug_view();
+    }
+    
     cf_pop_font_size();
     ui_build_layouts();
     ui_animate_layouts();
@@ -1289,6 +1294,26 @@ void ui_build_layout(UI_Layout* layout)
         }
         
         CF_V2 extents = cf_extents(item->aabb);
+        if (item->layout)
+        {
+            // if child layout has any Fit_To_Item_Aabb* then account for the item->aabb size change
+            if (ui_layout_has_var_ex(item->layout, "aabb"))
+            {
+                UI_Layout_Var var = ui_layout_get_var_ex(item->layout, "aabb");
+                
+                // all layouts are AABB from top left (0,0) to (width, -height)
+                if (BIT_IS_SET(item->layout->state, UI_Layout_State_Fit_To_Item_Aabb_X))
+                {
+                    extents.x = var.aabb.max.x - var.aabb.min.x + item->layout->item_padding;
+                    item->aabb.min.x = -extents.x;
+                }
+                if (BIT_IS_SET(item->layout->state, UI_Layout_State_Fit_To_Item_Aabb_Y))
+                {
+                    extents.y = var.aabb.max.y - var.aabb.min.y + item->layout->item_padding;
+                    item->aabb.min.y = -extents.y;
+                }
+            }
+        }
         
         switch (item->alignment)
         {
@@ -1299,7 +1324,7 @@ void ui_build_layout(UI_Layout* layout)
             }
             case UI_Item_Alignment_Right:
             {
-                item_cursor.x -= extents.x;
+                item_cursor.x -= extents.x; 
                 break;
             }
         }
@@ -1608,7 +1633,6 @@ void ui_build_layout(UI_Layout* layout)
     }
     
     // handle scroll view
-    //  @todo:  fix this so it's based off of cf_top_left(), below is too complicated
     if (layout->scroll_direction)
     {
         CF_V2 scroll_offset = ui_layout_get_scroll_offset(layout);
@@ -1704,9 +1728,6 @@ void ui_build_layouts()
 {
     UI* ui = &s_app->ui;
     
-    //  @todo:  fix child layout with Fit_To_Item_Aabb*
-    //          build up all item layouts first until it's stable
-    //          then move everything over
     s32 count = 0;
     s32 old_count = 0;
     FOREACH_LIST(node, &ui->layout_pool.active_list)
@@ -2663,4 +2684,78 @@ void ui_register_text_effect(const char* name, CF_TextEffectFn* draw_callback, C
     name = cf_sintern(name);
     cf_text_effect_register(name, ui_text_fx_keyword);
     cf_map_set(ui->text_effect_map, name, callbacks);
+}
+
+void ui_debug_view()
+{
+    UI* ui = &s_app->ui;
+    
+    cf_push_font_size(24.0f);
+    CF_Aabb layout_aabb = cf_make_aabb_from_top_left(cf_v2(UI_WIDTH * 0.75f, UI_HEIGHT * 0.25f), UI_WIDTH * 0.25f, UI_HEIGHT * 0.25f);
+    UI_Layout* debug_layout = ui_layout_begin("Debug");
+    ui_layout_set_title("Debug");
+    ui_layout_set_aabb(layout_aabb);
+    
+    ui_layout_set_alignment(BIT(UI_Layout_Alignment_Vertical_Bottom) | BIT(UI_Layout_Alignment_Horizontal_Right));
+    ui_layout_set_direction(UI_Layout_Direction_Down);
+    ui_push_item_alignment(UI_Item_Alignment_Right);
+    
+    BIT_SET(debug_layout->state, UI_Layout_State_Fit_To_Item_Aabb_X);
+    BIT_SET(debug_layout->state, UI_Layout_State_Fit_To_Item_Aabb_Y);
+    
+    UI_Layout* layout = NULL;
+    
+    for (s32 index = 0; index < cf_array_count(ui->layouts); ++index)
+    {
+        if (ui->layouts[index].name == ui->hover_layout_name)
+        {
+            layout = ui->layouts + index;
+            break;
+        }
+    }
+    
+    if (layout)
+    {
+        layout->border_color = cf_color_magenta();
+        layout->border_thickness = 2.0f;
+        
+        UI_Layout_Var var_aabb = { 0 };
+        UI_Layout_Var var_item_aabb = { 0 };
+        UI_Layout_Var var_usable_aabb = { 0 };
+        var_aabb.aabb = layout->aabb;
+        var_item_aabb.aabb = layout->item_aabb;
+        var_usable_aabb.aabb = layout->usable_aabb;
+        CF_V2 scroll = layout->scroll;
+        
+        if (ui_layout_has_var_ex(layout, "aabb"))
+        {
+            var_aabb = ui_layout_get_var_ex(layout, "aabb");
+            var_item_aabb = ui_layout_get_var_ex(layout, "item_aabb");
+            var_usable_aabb = ui_layout_get_var_ex(layout, "usable_aabb");
+        }
+        if (ui_layout_has_var_ex(layout, "scroll"))
+        {
+            UI_Layout_Var var = ui_layout_get_var_ex(layout, "scroll");
+            scroll = var.v2_value;
+        }
+        
+        // aabbaabbaabb
+        ui_do_text("%s", layout->name);
+        ui_do_text("min: %.2f, %.2f", var_aabb.aabb.min.x, var_aabb.aabb.min.y);
+        ui_do_text("max: %.2f, %.2f", var_aabb.aabb.max.x, var_aabb.aabb.max.y);
+        ui_do_text("item min: %.2f, %.2f", var_item_aabb.aabb.min.x, var_item_aabb.aabb.min.y);
+        ui_do_text("item max: %.2f, %.2f", var_item_aabb.aabb.max.x, var_item_aabb.aabb.max.y);
+        ui_do_text("usable min: %.2f, %.2f", var_usable_aabb.aabb.min.x, var_usable_aabb.aabb.min.y);
+        ui_do_text("usable max: %.2f, %.2f", var_usable_aabb.aabb.max.x, var_usable_aabb.aabb.max.y);
+        ui_do_text("scroll: %.2f, %.2f", scroll.x, scroll.y);
+        ui_do_text("item: %X", ui->debug_hover_hash);
+    }
+    else
+    {
+        ui_do_text("None");
+    }
+    
+    ui_pop_item_alignment();
+    ui_layout_end();
+    cf_pop_font_size();
 }
