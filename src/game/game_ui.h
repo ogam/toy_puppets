@@ -17,6 +17,7 @@ typedef struct Layout_Cache
     UI_Layout_Direction grid_direction;
     UI_Layout_Alignment alignment;
     UI_Layout_Scroll scroll_direction;
+    UI_Layout_State state;
     
     // ready only copies
     const char* title;
@@ -36,7 +37,7 @@ typedef struct Game_Log
 typedef struct Pin_Tooltip
 {
     s32 id;
-    dyna Layout_Cache* layouts;
+    fixed Layout_Cache* layouts;
     CF_Arena arena;
     b8 do_close;
 } Pin_Tooltip;
@@ -90,6 +91,7 @@ void game_ui_item_tooltip(Item_Type item_type);
 b32 game_ui_do_button(const char* fmt, ...);
 b32 game_ui_do_slider(f32 *value, f32 min, f32 max, f32 rate);
 
+void game_ui_clear_logs();
 void game_ui_do_logs();
 void game_ui_do_creature_hud();
 void game_ui_do_spell_hud();

@@ -83,7 +83,7 @@
 #ifndef MAKE_SCRATCH_ARRAY
 #define MAKE_SCRATCH_ARRAY(ARR, CAPACITY) \
 { \
-size_t __buffer_size = sizeof(CK_ArrayHeader) + sizeof(*ARR) * CAPACITY; \
+size_t __buffer_size = sizeof(CK_ArrayHeader) + sizeof(*ARR) * (CAPACITY); \
 void* __buffer = scratch_alloc(__buffer_size); \
 cf_array_static(ARR, __buffer, (s32)__buffer_size); \
 }
@@ -92,11 +92,23 @@ cf_array_static(ARR, __buffer, (s32)__buffer_size); \
 #ifndef MAKE_ARENA_ARRAY
 #define MAKE_ARENA_ARRAY(ARENA, ARR, CAPACITY) \
 { \
-size_t __buffer_size = sizeof(CK_ArrayHeader) + sizeof(*ARR) * CAPACITY; \
+size_t __buffer_size = sizeof(CK_ArrayHeader) + sizeof(*ARR) * (CAPACITY); \
 void* __buffer = cf_arena_alloc(ARENA, (s32)__buffer_size); \
 cf_array_static(ARR, __buffer, (s32)__buffer_size); \
 }
 #endif
+
+#ifndef GROW_ARENA_ARRAY
+#define GROW_ARENA_ARRAY(ARENA, ARR) \
+{ \
+s32 new_capacity = cf_array_capacity(ARR) == 0 ? 8 : cf_array_capacity(ARR) * 2; \
+typeof(ARR) __new_buffer = NULL; \
+MAKE_ARENA_ARRAY(ARENA, __new_buffer, new_capacity); \
+cf_array_set(__new_buffer, ARR); \
+ARR = __new_buffer; \
+}
+#endif
+
 
 #ifndef FOREACH_LIST
 #define FOREACH_LIST(NODE, LIST)                    \

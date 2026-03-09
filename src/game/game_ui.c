@@ -5,7 +5,7 @@ CF_Color menu_layout_background_color()
     return cf_make_color_rgba_f(0.0f, 0.0f, 0.0f, 0.5f);
 }
 
-void game_ui_cache_layout(dyna Layout_Cache* layout_caches, UI_Layout* layout, CF_Arena* arena)
+Layout_Cache* game_ui_cache_layout(dyna Layout_Cache* layout_caches, UI_Layout* layout, CF_Arena* arena)
 {
     cf_array_push(layout_caches, (Layout_Cache){ 0 });
     Layout_Cache* cache = &cf_array_last(layout_caches);
@@ -14,6 +14,7 @@ void game_ui_cache_layout(dyna Layout_Cache* layout_caches, UI_Layout* layout, C
     cache->grid_direction = layout->grid_direction;
     cache->alignment = layout->alignment;
     cache->scroll_direction = layout->scroll_direction;
+    cache->state = layout->state;
     {
         UI_Layout_Var var = ui_layout_get_var_ex(layout, cf_sintern("aabb"));
         cache->aabb = var.aabb;
@@ -44,16 +45,17 @@ void game_ui_cache_layout(dyna Layout_Cache* layout_caches, UI_Layout* layout, C
         }
         if (item.layout)
         {
-            game_ui_cache_layout(layout_caches, item.layout, arena);
-            item.layout = (UI_Layout*)(uintptr_t)(index + 1);
+            item.layout = (UI_Layout*)game_ui_cache_layout(layout_caches, item.layout, arena);
         }
         cf_array_push(cache->items, item);
     }
+    
+    return cache;
 }
 
 s32 get_layout_count(UI_Layout* layout)
 {
-    s32 count = 1;
+    s32 count = 0;
     if (layout)
     {
         ++count;
@@ -83,7 +85,7 @@ void game_ui_pin_tooltip()
     pin_tooltip.id = counter++;
     pin_tooltip.arena = cf_make_arena(16, KB(8));
     
-    MAKE_ARENA_ARRAY(&pin_tooltip.arena, pin_tooltip.layouts, get_layout_count(layout));
+    MAKE_ARENA_ARRAY(&pin_tooltip.arena, pin_tooltip.layouts, get_layout_count(layout) + 1);
     game_ui_cache_layout(pin_tooltip.layouts, layout, &pin_tooltip.arena);
     
     cf_array_push(game_ui->pin_tooltips, pin_tooltip);
@@ -458,6 +460,7 @@ void game_ui_close_all_tooltips()
     }
 }
 
+#if 0
 void game_ui_push_tooltip_content(UI_Layout* layout, Layout_Cache* layout_cache)
 {
     ui_layout_set_direction(layout_cache->direction);
@@ -518,6 +521,79 @@ void game_ui_do_tooltip_content(Pin_Tooltip* pin_tooltip)
         }
     }
 }
+#else
+void game_ui_push_tooltip_content(UI_Layout* layout, Layout_Cache* layout_cache)
+{
+    ui_layout_set_direction(layout_cache->direction);
+    ui_layout_set_grid_direction(layout_cache->grid_direction);
+    ui_layout_set_alignment(layout_cache->alignment);
+    ui_layout_set_scrollable(layout_cache->scroll_direction, cf_v2(0, 0));
+    if (layout_cache->scroll_direction)
+    {
+        ui_layout_do_scrollbar(false);
+    }
+    
+    for (s32 index = 0; index < cf_array_count(layout_cache->items); ++index)
+    {
+        UI_Item item = layout_cache->items[index];
+        UI_Item* new_item = ui_make_item();
+        *new_item = item;
+        if (item.text)
+        {
+            new_item->text = scratch_fmt(item.text);
+        }
+        if (item.custom_data && item.custom_size)
+        {
+            new_item->custom_data = scratch_copy(item.custom_data, item.custom_size);
+        }
+        if (BIT_IS_SET(item.state, UI_Item_State_Scrollbar))
+        {
+            new_item->state = 0;
+        }
+        if (item.layout)
+        {
+            new_item->layout = NULL;
+            UI_Layout* child_layout = ui_child_layout_begin(cf_extents(item.aabb));
+            Layout_Cache* child_layout_cache = (Layout_Cache*)item.layout;
+            child_layout->state = child_layout_cache->state;
+            game_ui_push_tooltip_content(child_layout, child_layout_cache);
+            ui_child_layout_end();
+        }
+    }
+}
+
+void game_ui_do_tooltip_content(Pin_Tooltip* pin_tooltip)
+{
+    UI_Layout* layout = ui_peek_layout();
+    
+    Layout_Cache* layout_cache = pin_tooltip->layouts;
+    
+    for (s32 index = 0; index < cf_array_count(layout_cache->items); ++index)
+    {
+        UI_Item item = layout_cache->items[index];
+        if (item.text)
+        {
+            item.text = scratch_fmt(item.text);
+        }
+        if (item.custom_data && item.custom_size)
+        {
+            item.custom_data = scratch_copy(item.custom_data, item.custom_size);
+        }
+        if (item.layout)
+        {
+            UI_Layout* child_layout = ui_child_layout_begin(cf_extents(item.aabb));
+            Layout_Cache* child_layout_cache = (Layout_Cache*)item.layout;
+            child_layout->state = child_layout_cache->state;
+            game_ui_push_tooltip_content(child_layout, child_layout_cache);
+            ui_child_layout_end();
+        }
+        else
+        {
+            cf_array_push(layout->items, item);
+        }
+    }
+}
+#endif
 
 void game_ui_do_tooltips()
 {
@@ -662,27 +738,36 @@ void game_ui_do_tooltips()
         
         ui_layout_set_title(creature_name);
         
-        ui_push_layout_background_color(cf_color_clear());
-        ui_child_layout_begin(cf_v2(250.0f, cf_peek_font_size() * 6));
-        ui_pop_layout_background_color();
-        ui_layout_set_grid_direction(UI_Layout_Direction_Right);
-        ui_do_text("Health");
-        ui_do_text("Strength");
-        ui_do_text("Agility");
-        ui_do_text("Speed");
-        
-        //  @todo:  break down each stat and how it gets modified
-        fixed char* health_tooltip = game_ui_attributes_health_tooltip(map_attributes);
-        fixed char* strength_tooltip = game_ui_attributes_strength_tooltip(map_attributes);
-        fixed char* agility_tooltip = game_ui_attributes_agility_tooltip(map_attributes);
-        fixed char* move_speed_tooltip = game_ui_attributes_move_speed_tooltip(map_attributes);
-        
-        ui_do_text("<embed_tooltip title=\"Health\" text=\"%s\">%d/%d</embed_tooltip>", health_tooltip, health_value, attributes.health);
-        ui_do_text("<embed_tooltip title=\"Strength\" text=\"%s\">%d</embed_tooltip>", strength_tooltip, attributes.strength);
-        ui_do_text("<embed_tooltip title=\"Agility\" text=\"%s\">%d</embed_tooltip>", agility_tooltip, attributes.agility);
-        ui_do_text("<embed_tooltip title=\"Speed\" text=\"%s\">%.2f</embed_tooltip>", move_speed_tooltip, attributes.move_speed);
-        
-        ui_child_layout_end();
+        {
+            ui_push_layout_background_color(cf_color_clear());
+            UI_Layout* attributes_layout = ui_child_layout_begin(cf_v2(100.0f, 0));
+            ui_pop_layout_background_color();
+            BIT_SET(attributes_layout->state, UI_Layout_State_Fit_To_Item_Aabb_Y);
+            
+            ui_do_text("Health");
+            ui_do_text("Strength");
+            ui_do_text("Agility");
+            ui_do_text("Speed");
+            ui_child_layout_end();
+            
+            fixed char* health_tooltip = game_ui_attributes_health_tooltip(map_attributes);
+            fixed char* strength_tooltip = game_ui_attributes_strength_tooltip(map_attributes);
+            fixed char* agility_tooltip = game_ui_attributes_agility_tooltip(map_attributes);
+            fixed char* move_speed_tooltip = game_ui_attributes_move_speed_tooltip(map_attributes);
+            
+            ui_do_same_line();
+            ui_push_layout_background_color(cf_color_clear());
+            attributes_layout = ui_child_layout_begin(cf_v2(100.0f, 0));
+            ui_pop_layout_background_color();
+            BIT_SET(attributes_layout->state, UI_Layout_State_Fit_To_Item_Aabb_Y);
+            
+            ui_do_text("<embed_tooltip title=\"Health\" text=\"%s\">%d/%d</embed_tooltip>", health_tooltip, health_value, attributes.health);
+            ui_do_text("<embed_tooltip title=\"Strength\" text=\"%s\">%d</embed_tooltip>", strength_tooltip, attributes.strength);
+            ui_do_text("<embed_tooltip title=\"Agility\" text=\"%s\">%d</embed_tooltip>", agility_tooltip, attributes.agility);
+            ui_do_text("<embed_tooltip title=\"Speed\" text=\"%s\">%.2f</embed_tooltip>", move_speed_tooltip, attributes.move_speed);
+            
+            ui_child_layout_end();
+        }
         
         for (s32 index = 0; index < cf_array_count(effects); ++index)
         {
@@ -690,6 +775,32 @@ void game_ui_do_tooltips()
             ui_do_sprite_ex(get_condition_sprite(effects[index].type), cf_v2(cf_peek_font_size(), cf_peek_font_size()));
             ui_do_same_line();
             ui_do_text(text);
+        }
+        
+        // @remove this child chain test
+        {
+            ui_push_layout_background_color(cf_color_clear());
+            UI_Layout* outer_layout = ui_child_layout_begin(cf_v2(100.0f, 0));
+            BIT_SET(outer_layout->state, UI_Layout_State_Fit_To_Item_Aabb_Y);
+            
+            ui_pop_layout_background_color();
+            
+            ui_do_text("THis is an outer text");
+            UI_Layout* inner_layout = ui_child_layout_begin(cf_v2(100.0f, 0));
+            BIT_SET(inner_layout->state, UI_Layout_State_Fit_To_Item_Aabb_Y);
+            
+            ui_do_text("THis is an inner text");
+            
+            UI_Layout* inner2_layout = ui_child_layout_begin(cf_v2(100.0f, 0));
+            BIT_SET(inner2_layout->state, UI_Layout_State_Fit_To_Item_Aabb_Y);
+            
+            ui_do_text("THis is an inner2 text");
+            
+            ui_child_layout_end();
+            
+            ui_child_layout_end();
+            
+            ui_child_layout_end();
         }
         
         ui_pop_layout_background_color();
@@ -784,6 +895,12 @@ b32 game_ui_do_slider(f32 *value, f32 min, f32 max, f32 rate)
     }
     
     return changed;
+}
+
+void game_ui_clear_logs()
+{
+    Game_UI* game_ui = &s_app->game_ui;
+    node_pool_reset(&game_ui->log_pool);
 }
 
 void game_ui_do_logs()
@@ -1168,7 +1285,7 @@ void game_ui_do_arena_result()
                         inventory_add_body(inventory, body_types[body_index], body_counts[body_index]);
                     }
                 }
-                
+                game_ui_clear_logs();
                 world_set_state(World_State_Overworld);
             }
             
@@ -1186,6 +1303,7 @@ void game_ui_do_arena_result()
         {
             if (game_ui_do_button("Main Menu"))
             {
+                game_ui_clear_logs();
                 game_ui_set_state(Game_UI_State_Main_Menu);
             }
         }

@@ -106,7 +106,6 @@ void init_ui()
     {
         UI_Layout layout = { 0 };
         cf_array_fit(layout.items, UI_LAYOUT_ITEM_MIN_CAPACITY);
-        cf_array_fit(layout.children, 32);
         cf_array_push(ui->layouts, layout);
         
         node_pool_add(&ui->layout_pool, &cf_array_last(ui->layouts).node);
@@ -531,7 +530,6 @@ UI_Layout* ui_layout_begin(const char* name)
         cf_array_clear(layout->items);
         cf_array_push(ui->layout_stack, layout);
         layout->parent = NULL;
-        cf_array_clear(layout->children);;
         
         layout->name = cf_sintern(name);
         layout->title = NULL;
@@ -542,6 +540,7 @@ UI_Layout* ui_layout_begin(const char* name)
         layout->scroll_direction = 0;
         layout->state = 0;
         layout->item_padding = 10.0f;
+        layout->child_count = 0;
         
         layout->aabb = cf_make_aabb_from_top_left(cf_v2(0, UI_HEIGHT), UI_WIDTH, UI_HEIGHT);
         layout->usable_aabb = layout->aabb;
@@ -672,13 +671,10 @@ UI_Layout* ui_child_layout_begin(CF_V2 size)
     item->text_aabb = item->aabb;
     item->interactable_aabb = item->aabb;
     
-    s32 child_id = cf_array_count(parent->children);
-    UI_Layout* layout = ui_layout_begin(scratch_fmt("%s_child_%d", parent->name, child_id));
+    UI_Layout* layout = ui_layout_begin(scratch_fmt("%s_child_%d", parent->name, parent->child_count++));
     ui_layout_set_aabb(item->aabb);
     item->layout = layout;
     layout->parent = parent;
-    
-    cf_array_push(parent->children, layout);
     
     return layout;
 }

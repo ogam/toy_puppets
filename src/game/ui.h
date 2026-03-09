@@ -127,9 +127,10 @@ typedef struct UI_Layout
 {
     const char* name;
     const char* title;
+    
+    // change this to arena
     dyna UI_Item* items;
     UI_Layout* parent;
-    dyna UI_Layout** children;
     
     CF_Aabb aabb;
     // area that items can be placed, also probably not the best name for how this is used but oh well
@@ -145,6 +146,7 @@ typedef struct UI_Layout
     f32 corner_radius;
     f32 title_font_size;
     f32 item_padding;
+    s32 child_count;
     
     //  @todo:  background and 9 slice
     
@@ -240,9 +242,12 @@ typedef struct UI
     UI_Style style;
     UI_Input input;
     
+    // change this to arena
     dyna UI_Layout* layouts;
+    // swap this out for arena
     Node_Pool layout_pool;
     
+    // transient, gets cleared out at start of every ui_begin()
     dyna UI_Layout** layout_stack;
     CF_MAP(UI_Item*) item_map;
     
