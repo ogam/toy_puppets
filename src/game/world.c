@@ -1014,7 +1014,7 @@ void event_handle_condition_removed(ecs_entity_t entity, Condition_Effect_Type t
 
 s32 event_handle_condition_tick(ecs_entity_t entity, Condition_Effect_Type type, s32 tick_count)
 {
-    s32 damage = get_condition_tick_damage(type, tick_count);;
+    s32 damage = get_condition_tick_damage(type, tick_count);
     if (damage != 0)
     {
         floating_text_add_damage(entity, damage);
@@ -1268,7 +1268,7 @@ ecs_ret_t system_update_conditions(ecs_t* ecs, ecs_entity_t* entities, size_t en
             if (effect->duration_type == Condition_Duration_Type_Finite)
             {
                 f32 prev_duration = effect->duration;
-                effect->duration -= dt;
+                effect->duration = cf_max(effect->duration - dt, 0.0f);
                 
                 if (effect->tick_rate > 0)
                 {
@@ -1726,7 +1726,7 @@ ecs_ret_t system_update_ai_tentacles(ecs_t* ecs, ecs_entity_t* entities, size_t 
         
         if (COROUTINE_IS_RUNNING(puppet->action_co))
         {
-            ai->attack_delay = agility_to_attack_rate(creature);;
+            ai->attack_delay = agility_to_attack_rate(creature);
             cf_coroutine_resume(puppet->action_co);
             continue;
         }
@@ -1748,7 +1748,7 @@ ecs_ret_t system_update_ai_tentacles(ecs_t* ecs, ecs_entity_t* entities, size_t 
                 
                 if (abs_dp.y < body->height * 0.1f && dx < attack_range)
                 {
-                    body->facing_direction = dp.x < 0 ? -1.0f : 1.0f;;
+                    body->facing_direction = dp.x < 0 ? -1.0f : 1.0f;
                     cf_destroy_coroutine(puppet->action_co);
                     puppet->action_co = cf_make_coroutine(body_tentacle_whip_co, 0, body);
                     hurt_box->damage = strength_to_damage(creature);
@@ -1927,7 +1927,7 @@ ecs_ret_t system_update_hand_caster(ecs_t* ecs, ecs_entity_t* entities, size_t e
     
     ecs_comp_t comp_puppet = ECS_GET_COMP(C_Puppet);
     
-    CF_V2 world_position = s_app->input.world_position;;
+    CF_V2 world_position = s_app->input.world_position;
     b32 cast_spell = cf_button_binding_pressed(s_app->input.cast_spell) && !ui_is_any_layout_hovered();
     b32 cancel_spell = cf_button_binding_pressed(s_app->input.cancel_spell) && !ui_is_any_layout_hovered();
     
@@ -2258,7 +2258,7 @@ ecs_ret_t system_draw_hand_caster(ecs_t* ecs, ecs_entity_t* entities, size_t ent
     ecs_comp_t comp_hand_caster = ECS_GET_COMP(C_Hand_Caster);
     ecs_comp_t comp_team = ECS_GET_COMP(C_Team);
     
-    CF_V2 world_position = s_app->input.world_position;;
+    CF_V2 world_position = s_app->input.world_position;
     b32 cast_spell = cf_button_binding_pressed(s_app->input.cast_spell);
     
     f32 font_size = 48.0f;

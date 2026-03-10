@@ -777,32 +777,6 @@ void game_ui_do_tooltips()
             ui_do_text(text);
         }
         
-        // @remove this child chain test
-        {
-            ui_push_layout_background_color(cf_color_clear());
-            UI_Layout* outer_layout = ui_child_layout_begin(cf_v2(100.0f, 0));
-            BIT_SET(outer_layout->state, UI_Layout_State_Fit_To_Item_Aabb_Y);
-            
-            ui_pop_layout_background_color();
-            
-            ui_do_text("THis is an outer text");
-            UI_Layout* inner_layout = ui_child_layout_begin(cf_v2(100.0f, 0));
-            BIT_SET(inner_layout->state, UI_Layout_State_Fit_To_Item_Aabb_Y);
-            
-            ui_do_text("THis is an inner text");
-            
-            UI_Layout* inner2_layout = ui_child_layout_begin(cf_v2(100.0f, 0));
-            BIT_SET(inner2_layout->state, UI_Layout_State_Fit_To_Item_Aabb_Y);
-            
-            ui_do_text("THis is an inner2 text");
-            
-            ui_child_layout_end();
-            
-            ui_child_layout_end();
-            
-            ui_child_layout_end();
-        }
-        
         ui_pop_layout_background_color();
         game_ui_tooltip_end();
     }
