@@ -135,4 +135,6 @@ void game_ui_do_pause();
 void game_ui_do_play();
 void game_ui_do_debug_stats();
 
+void profiler_ui_do_flame_graph(Profiler* profiler, s32 frame_index);
+
 #endif //GAME_UI_H

@@ -365,6 +365,7 @@ b32 ui_do_sprite_button(CF_Sprite sprite);
 b32 ui_do_tabs(const char** names, s32 count, s32* current);
 // hsv color wheel, in color is expected to be in RGBA format
 b32 ui_do_color_wheel(CF_Color* color);
+b32 ui_do_graph_line(f32* values, s32 count, s32* select_index);
 
 // @same_line
 // only handles horizontal same line, so if you have a layout placing items to left or right

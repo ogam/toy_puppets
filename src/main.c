@@ -44,6 +44,8 @@ int main(int argc, char **argv)
         cf_app_draw_onto_screen(false);
     }
     
+    profile_file_stream_end();
+    
     cf_destroy_app();
     
     return 0;

@@ -42,7 +42,7 @@ void update_world()
         cf_arena_reset(world->damage_arenas + world->damage_arena_index);
     }
     
-    PERF(system_handle_events) 
+    PROFILE_SECTION("system_handle_events")
     {
         ECS_RUN_SYSTEM(system_handle_events);
     }
@@ -51,20 +51,14 @@ void update_world()
     {
         case World_State_Overworld:
         {
-            PERF(update_overworld) 
-            {
-                update_overworld();
-            }
+            PROFILE_FUNC(update_overworld);
             break;
         }
         case World_State_Arena_Placement:
         case World_State_Arena_In_Progress:
         case World_State_Arena_End:
         {
-            PERF(world_arena_update) 
-            {
-                world_arena_update();
-            }
+            PROFILE_FUNC(world_arena_update);
             break;
         }
     }
@@ -304,10 +298,13 @@ void world_arena_update()
 {
     World* world = &s_app->world;
     
-    ECS_RUN_SYSTEM(system_update_conditions);
-    ECS_RUN_SYSTEM(system_update_healths);
-    ECS_RUN_SYSTEM(system_update_creature_teams);
-    ECS_RUN_SYSTEM(system_update_puppet_animations);
+    PROFILE_SECTION("Arena Pre")
+    {
+        ECS_RUN_SYSTEM(system_update_conditions);
+        ECS_RUN_SYSTEM(system_update_healths);
+        ECS_RUN_SYSTEM(system_update_creature_teams);
+        ECS_RUN_SYSTEM(system_update_puppet_animations);
+    }
     
     if (COROUTINE_IS_RUNNING(world->state_transition_co))
     {
@@ -371,10 +368,13 @@ void world_arena_update()
         }
     }
     
-    ECS_RUN_SYSTEM(system_update_movements);
-    ECS_RUN_SYSTEM(system_update_puppet_picking);
-    ECS_RUN_SYSTEM(system_update_floating_texts);
-    ECS_RUN_SYSTEM(system_update_cursor);
+    PROFILE_SECTION("Arena Post")
+    {
+        ECS_RUN_SYSTEM(system_update_movements);
+        ECS_RUN_SYSTEM(system_update_puppet_picking);
+        ECS_RUN_SYSTEM(system_update_floating_texts);
+        ECS_RUN_SYSTEM(system_update_cursor);
+    }
 }
 
 void world_arena_draw()
