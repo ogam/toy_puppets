@@ -526,9 +526,6 @@ void init()
     s_app = cf_alloc(sizeof(App));
     CF_MEMSET(s_app, 0, sizeof(App));
     
-    init_profiler(64);
-    profile_file_stream_begin("trace.json");
-    
     init_memory();
     init_audio();
     init_input();
