@@ -33,6 +33,9 @@ int main(int argc, char **argv)
     cf_set_target_framerate(TARGET_FRAMERATE);
     cf_app_set_vsync(true);
     
+    init_profiler(64);
+    profile_file_stream_begin("trace.json");
+    
     init();
     
 #ifdef __EMSCRIPTEN__
@@ -43,6 +46,8 @@ int main(int argc, char **argv)
         cf_app_update(update);
         cf_app_draw_onto_screen(false);
     }
+    
+    profile_file_stream_end();
     
     cf_destroy_app();
     

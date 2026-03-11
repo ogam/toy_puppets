@@ -1,6 +1,7 @@
 #include "common/types.h"
 #include "common/macros.h"
 #include "common/memory.h"
+#include "common/profiler.h"
 #include "common/strings.h"
 #include "game/audio.h"
 #include "game/assets.h"
@@ -19,47 +20,6 @@
 #include "tools/animation.h"
 
 #include "dcimgui.h"
-
-typedef struct Perf_Stat
-{
-    const char* name;
-    const char* file;
-    s32 line;
-    dyna f64* durations;
-    
-    // absolute min and max
-    f64 min;
-    f64 max;
-    
-    s32 write_index;
-    s32 read_index;
-    
-    CF_Stopwatch stopwatch;
-} Perf_Stat;
-
-#ifndef PERF_BEGIN_STR
-#define PERF_BEGIN_STR(NAME) perf_stat_begin(NAME, __FILE__, __LINE__)
-#endif
-
-#ifndef PERF_END_STR
-#define PERF_END_STR(NAME) perf_stat_end(NAME)
-#endif
-
-#ifndef PERF_BEGIN
-#define PERF_BEGIN(NAME) PERF_BEGIN_STR(#NAME)
-#endif
-
-#ifndef PERF_END
-#define PERF_END(NAME) PERF_END_STR(#NAME)
-#endif
-
-#ifndef PERF
-#define PERF(NAME) PERF_BEGIN(NAME); for(int ___x = 0; ___x < 1; PERF_END(NAME), ++___x)
-#endif
-
-#ifndef PERF_FUNC
-#define PERF_FUNC() PERF_BEGIN_STR(__function__); for(int ___x = 0; ___x < 1; PERF_END_STR(__function__), ++___x)
-#endif
 
 typedef struct Input
 {
@@ -126,7 +86,6 @@ typedef struct App
     Body_Text body_text;
     
     CF_V2 screen_size;
-    CF_MAP(Perf_Stat) perf_stats;
     Debug_State debug_state;
 } App;
 
@@ -137,49 +96,6 @@ CF_Aabb move_aabb(CF_Aabb aabb, CF_V2 offset)
     aabb.min = cf_add(aabb.min, offset);
     aabb.max = cf_add(aabb.max, offset);
     return aabb;
-}
-
-void perf_stat_begin(const char* name, const char* file, s32 line)
-{
-    name = cf_sintern(name);
-    if (!cf_map_has(s_app->perf_stats, name))
-    {
-        Perf_Stat perf = { 0 };
-        perf.name = name;
-        perf.file = cf_sintern(file);
-        perf.line = line;
-        perf.min = F32_MAX;
-        perf.max = -F32_MAX;
-        cf_array_fit(perf.durations, 32);
-        cf_array_setlen(perf.durations, 32);
-        CF_MEMSET(perf.durations, 0, sizeof(*perf.durations) * 32);
-        
-        cf_map_set(s_app->perf_stats, name, perf);
-    }
-    
-    {
-        Perf_Stat* perf = cf_map_get_ptr(s_app->perf_stats, name);
-        perf->stopwatch = cf_make_stopwatch();
-    }
-}
-
-void perf_stat_end(const char* name)
-{
-    name = cf_sintern(name);
-    if (cf_map_has(s_app->perf_stats, name))
-    {
-        Perf_Stat* perf = cf_map_get_ptr(s_app->perf_stats, name);
-        f64 duration_us = (f64)cf_stopwatch_microseconds(perf->stopwatch);
-        perf->durations[perf->write_index] = duration_us;
-        perf->write_index = (perf->write_index + 1) % cf_array_count(perf->durations);
-        if (perf->read_index == perf->write_index)
-        {
-            perf->read_index = (perf->read_index + 1) % cf_array_count(perf->durations);
-        }
-        
-        perf->min = cf_min(perf->min, duration_us);
-        perf->max = cf_max(perf->max, duration_us);
-    }
 }
 
 void handle_window_events_ex(s32 w, s32 h)
@@ -818,6 +734,7 @@ void draw_body_text()
 
 void update(void* udata)
 {
+    PROFILE_BEGIN();
     UNUSED(udata);
     
     scratch_reset();
@@ -830,10 +747,7 @@ void update(void* udata)
     update_world();
     update_body_text();
     
-    PERF(update_game_ui)
-    {
-        update_game_ui();
-    }
+    PROFILE_FUNC(update_game_ui);
     
     if (cf_key_just_pressed(CF_KEY_F1))
     {
@@ -853,15 +767,8 @@ void update(void* udata)
         s_app->ui.debug = BIT_IS_SET(s_app->debug_state, Debug_State_UI);
     }
     
-    PERF(draw_world)
-    {
-        draw_world();
-    }
-    
-    PERF(draw_ui)
-    {
-        draw_ui();
-    }
+    PROFILE_FUNC(draw_world);
+    PROFILE_FUNC(draw_ui);
     
     draw_body_text();
     
@@ -889,6 +796,8 @@ void update(void* udata)
     }
     
     cf_render_to(cf_app_get_canvas(), false);
+    
+    PROFILE_END();
 }
 
 inline void push_scissor(CF_Aabb bounds)
@@ -931,6 +840,7 @@ CF_V2 get_cursor_position()
 }
 
 #include "common/memory.c"
+#include "common/profiler.c"
 #include "common/strings.c"
 #include "game/audio.c"
 #include "game/assets.c"

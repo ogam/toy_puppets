@@ -1239,7 +1239,7 @@ void ui_build_layout(UI_Layout* layout)
     b32 shift_item_aabb_down = BIT_IS_SET(layout->alignment, UI_Layout_Alignment_Vertical_Top) && 
         layout->direction == UI_Layout_Direction_Up;
     
-    b32 do_same_line = false;;
+    b32 do_same_line = false;
     UI_Item* prev_tiled_item = NULL;
     
     // builds out item_aabb and moves each item to auto layout position
@@ -2472,7 +2472,7 @@ b32 ui_do_sprite_button(CF_Sprite sprite)
     ui_do_sprite(sprite);
     UI_Item* item = ui_layout_peek_item();
     
-    return ui_handle_button(item);;
+    return ui_handle_button(item);
 }
 
 b32 ui_do_tabs(const char** names, s32 count, s32* current)
@@ -2618,7 +2618,7 @@ b32 ui_do_color_wheel(CF_Color* color)
                 angle += CF_TAU;
             }
             
-            hsv.r = angle / CF_TAU;;
+            hsv.r = angle / CF_TAU;
             hsv.g = cf_clamp01(cf_len(position));
         }
         
@@ -2659,6 +2659,190 @@ b32 ui_do_color_wheel(CF_Color* color)
     }
     
     return cf_color_to_pixel(prev).val != cf_color_to_pixel(*color).val;
+}
+
+typedef struct UI_Graph_Line_Data
+{
+    f32* values;
+    s32 count;
+    s32 select_index;
+    f32 min;
+    f32 max;
+} UI_Graph_Line_Data;
+
+void ui_draw_graph_line(UI_Layout* layout, UI_Item* item)
+{
+    CF_Aabb aabb = item->interactable_aabb;
+    
+    if (item->background_color.a > 0)
+    {
+        cf_draw_push_color(item->background_color);
+        cf_draw_box_fill(aabb, item->corner_radius);
+        cf_draw_pop_color();
+    }
+    
+    if (item->border_color.a > 0)
+    {
+        cf_draw_push_color(item->border_color);
+        cf_draw_box(aabb, item->border_thickness, item->corner_radius);
+        cf_draw_pop_color();
+    }
+    
+    UI_Graph_Line_Data* data = (UI_Graph_Line_Data*)item->custom_data;
+    
+    if (data->count < 1)
+    {
+        return;
+    }
+    
+    CF_Color line_color = item->border_color;
+    line_color.a = 1.0f;
+    
+    f32* values = data->values;
+    f32 min = data->min;
+    f32 max = data->max;
+    f32 range = data->max - data->min;
+    s32 walk_count = cf_max(data->count - 1, 1);
+    
+    // draw lines
+    cf_draw_push_color(line_color);
+    for (s32 index = 0; index < walk_count; ++index)
+    {
+        CF_V2 p0 = cf_v2(0, 0);
+        CF_V2 p1 = cf_v2(0, 0);
+        
+        p0.x = cf_remap01((f32)index / walk_count, aabb.min.x, aabb.max.x);
+        p0.y = cf_remap(values[index], data->min, data->max, aabb.min.y, aabb.max.y);
+        
+        p1.x = cf_remap01((f32)(index + 1) / walk_count, aabb.min.x, aabb.max.x);
+        p1.y = cf_remap(values[index + 1], min, max, aabb.min.y, aabb.max.y);
+        
+        cf_draw_line(p0, p1, 1.0f);
+    }
+    cf_draw_pop_color();
+    
+    // draw current selected
+    {
+        CF_V2 p = cf_v2(0, 0);
+        p.x = (f32)data->select_index / walk_count;
+        p.y = cf_remap(values[data->select_index], data->min, data->max, 0.0f, 1.0f);
+        
+        p.x = cf_remap01(p.x, aabb.min.x, aabb.max.x);
+        p.y = cf_remap01(p.y, aabb.min.y, aabb.max.y);
+        
+        cf_draw_push_color(line_color);
+        cf_draw_circle_fill2(p, 2.0f);
+        cf_draw_pop_color();
+    }
+    
+    f32 font_size = item->font_size;
+    char buffer[256];
+    
+    // max
+    {
+        CF_SNPRINTF(buffer, sizeof(buffer), "%.2f", max);
+        
+        CF_V2 text_position = cf_top_left(aabb);
+        text_position.y += cf_text_height(buffer, -1);
+        CF_V2 shadow_position = cf_add(text_position, cf_v2(1.0f, -1.0f));
+        
+        cf_push_font_size(font_size);
+        
+        cf_draw_push_color(item->text_shadow_color);
+        cf_draw_text(buffer, shadow_position, -1);
+        cf_draw_pop_color();
+        
+        cf_draw_push_color(item->text_color);
+        cf_draw_text(buffer, text_position, -1);
+        cf_draw_pop_color();
+        
+        cf_pop_font_size();
+    }
+    
+    // min
+    {
+        CF_SNPRINTF(buffer, sizeof(buffer), "%.2f", min);
+        
+        CF_V2 text_position = cf_bottom_left(aabb);
+        CF_V2 shadow_position = cf_add(text_position, cf_v2(1.0f, -1.0f));
+        
+        cf_push_font_size(font_size);
+        
+        cf_draw_push_color(item->text_shadow_color);
+        cf_draw_text(buffer, shadow_position, -1);
+        cf_draw_pop_color();
+        
+        cf_draw_push_color(item->text_color);
+        cf_draw_text(buffer, text_position, -1);
+        cf_draw_pop_color();
+        
+        cf_pop_font_size();
+    }
+}
+
+b32 ui_do_graph_line(f32* values, s32 count, s32* select_index)
+{
+    UI* ui = &s_app->ui;
+    
+    f32 graph_height = cf_peek_font_size() * 2;
+    f32 graph_width = cf_peek_font_size() * 8;
+    
+    f32 min = F32_MAX;
+    f32 max = -F32_MAX;
+    
+    for (s32 index = 0; index < count; ++index)
+    {
+        min = cf_min(min, values[index]);
+        max = cf_max(max, values[index]);
+    }
+    
+    f32 range = max - min;
+    max += range * 0.5f;
+    min -= range * 0.5f;
+    
+    CF_Aabb aabb = cf_make_aabb_from_top_left(cf_v2(0, 0), graph_width, graph_height);
+    UI_Item* item = ui_make_item();
+    BIT_SET(item->state, UI_Item_State_Interactable);
+    
+    item->aabb = aabb;
+    item->aabb.max.y += cf_peek_font_size();
+    item->aabb.min.y -= cf_peek_font_size();
+    
+    item->text_aabb = aabb;
+    item->interactable_aabb = aabb;
+    item->font_size = cf_peek_font_size() * 0.5f;
+    
+    s32 peek_select_index = cf_max(count - 1, 0);
+    if (select_index)
+    {
+        peek_select_index = *select_index;
+    }
+    
+    s32 prev_index = peek_select_index;
+    // input handling
+    if (item->hash == ui->down_hash)
+    {
+        f32 x = cf_clamp01(ui->down_normalize_position.x);
+        peek_select_index = (s32)(x * (count - 1));
+        
+        if (select_index)
+        {
+            *select_index = peek_select_index;
+        }
+    }
+    
+    UI_Graph_Line_Data* data = scratch_alloc(sizeof(UI_Graph_Line_Data));
+    data->values = values;
+    data->count = count;
+    data->select_index = peek_select_index;
+    data->min = min;
+    data->max = max;
+    
+    item->custom_draw = ui_draw_graph_line;
+    item->custom_data = data;
+    item->custom_size = sizeof(*data);
+    
+    return prev_index != peek_select_index;
 }
 
 void ui_do_same_line()

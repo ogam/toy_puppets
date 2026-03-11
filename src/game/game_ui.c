@@ -2505,6 +2505,10 @@ void game_ui_do_play()
 
 void game_ui_do_debug_stats()
 {
+    static s32 select_offset_index = 0;
+    
+    Profiler* profiler = profiler_get();
+    
     cf_push_font_size(36.0f);
     ui_push_layout_background_color(menu_layout_background_color());
     UI_Layout* layout = ui_layout_begin("Stats");
@@ -2519,36 +2523,194 @@ void game_ui_do_debug_stats()
     
     cf_push_font_size(24.0f);
     
+    // graph
     {
-        CF_MAP(Perf_Stat) perf_stats = s_app->perf_stats;
+        fixed f32* durations = NULL;
+        MAKE_SCRATCH_ARRAY(durations, cf_array_count(profiler->frames));
         
-        ui_do_text("NAME | CUR | MIN | MAX | RUNNING_AVG");
-        for (s32 index = 0; index < cf_map_size(perf_stats); ++index)
+        for (s32 index = profiler->read_index; index != profiler->write_index;)
         {
-            Perf_Stat* perf_stat = perf_stats + index;
-            
-            s32 last_write_index = perf_stat->write_index - 1 + cf_array_count(perf_stat->durations);
-            last_write_index = last_write_index % cf_array_count(perf_stat->durations);
-            
-            f64 current = perf_stat->durations[last_write_index];
-            f64 running_avg = 0.0;
-            s32 next_read_index = perf_stat->read_index;
-            s32 count = 0;
-            
-            while (next_read_index != perf_stat->write_index)
-            {
-                running_avg += perf_stat->durations[next_read_index];
-                ++count;
-                next_read_index = (next_read_index + 1) % cf_array_count(perf_stat->durations);
-            }
-            
-            running_avg /= count;
-            ui_do_text("%s | %.2f | %.2f | %.2f | %.2f", perf_stat->name, current, perf_stat->min, perf_stat->max, running_avg);
-            ui_tooltip("%s[%d]", perf_stat->file, perf_stat->line);
+            Profile_Frame* frame = profiler->frames + index;
+            cf_array_push(durations, (f32)frame->samples[0].duration);
+            index = (index + 1) % cf_array_count(profiler->frames);
         }
         
+        ui_push_border_color(cf_color_white());
+        if (ui_do_graph_line(durations, cf_array_count(durations), &select_offset_index))
+        {
+            profiler_pause(true);
+        }
+        ui_pop_border_color();
     }
+    
+    // samples
+    {
+        s32 select_index = (profiler->read_index + select_offset_index) % cf_array_count(profiler->frames);
+        if (select_index == profiler->write_index)
+        {
+            select_index = profiler->write_index - 1 + cf_array_count(profiler->frames);
+            select_index = select_index % cf_array_count(profiler->frames);
+        }
+        
+        profiler_ui_do_flame_graph(profiler, select_index);
+    }
+    
+    if (!ui_layout_is_hovering(layout) && profiler_is_paused())
+    {
+        profiler_pause(false);
+        select_offset_index = cf_array_count(profiler->frames) - 2;
+    }
+    
     ui_layout_end();
     
     cf_pop_font_size();
+}
+
+void profiler_ui_sample_tooltip(Profiler* profiler, s32 frame_index, Profile_Sample* sample)
+{
+    UI_Layout* layout = ui_peek_layout();
+    UI_Item* item = ui_layout_peek_item();
+    BIT_SET(item->state, UI_Item_State_Can_Hover);
+    
+    if (ui_item_is_hovered())
+    {
+        ui_push_layout_background_color(cf_color_black());
+        ui_push_layout_border_color(cf_color_white());
+        ui_push_layout_border_thickness(1);
+        ui_push_layout_corner_radius(5);
+        
+        ui_tooltip_begin(cf_extents(layout->aabb));
+        
+        fixed f32* durations = NULL;
+        MAKE_SCRATCH_ARRAY(durations, cf_array_count(profiler->frames));
+        
+        s32 read_index = profiler->read_index;
+        while (read_index != profiler->write_index)
+        {
+            Profile_Frame* tooltip_frame = profiler->frames + read_index;
+            cf_array_push(durations, 0);
+            for (s32 sample_index = 0; sample_index < cf_array_count(tooltip_frame->samples); ++sample_index)
+            {
+                if (cf_string_equ(tooltip_frame->samples[sample_index].name, sample->name))
+                {
+                    cf_array_last(durations) = (f32)tooltip_frame->samples[sample_index].duration;
+                    break;
+                }
+            }
+            read_index = (read_index + 1) % cf_array_count(profiler->frames);
+        }
+        
+        ui_push_border_thickness(1);
+        ui_push_border_color(cf_color_white());
+        
+        s32 graph_line_index = frame_index;
+        ui_do_graph_line(durations, cf_array_count(durations), &graph_line_index);
+        
+        ui_pop_border_color();
+        ui_pop_border_thickness();
+        
+        ui_do_text("%s\n%s:%d\n%.2fms\n%" PRIu64 " | %" PRIu64" | %" PRIu64, sample->name, sample->file, sample->line, sample->duration, sample->start, sample->end, sample->end - sample->start);
+        ui_tooltip_end();
+        
+        ui_pop_layout_background_color();
+        ui_pop_layout_border_color();
+        ui_pop_layout_border_thickness();
+        ui_pop_layout_corner_radius();
+    }
+}
+
+void profiler_ui_do_flame_graph(Profiler* profiler, s32 frame_index)
+{
+    Profile_Frame* frame = profiler->frames + frame_index;
+    if (cf_array_count(frame->samples) == 0)
+    {
+        return;
+    }
+    
+    UI_Layout* layout = ui_peek_layout();
+    
+    CF_V2 layout_extents = cf_extents(layout->usable_aabb);
+    
+    ui_push_layout_border_thickness(1.0f);
+    ui_push_layout_border_color(cf_color_white());
+    
+    f32 graph_width = layout_extents.x - layout->item_padding;
+    f32 inner_graph_width = graph_width - layout->item_padding * 2;
+    
+    f32 height = cf_peek_font_size();
+    
+    // entire flame graph will be inside a child layout to resolve arbitary Y height
+    // since we don't iknow how deep a call stack can get
+    UI_Layout* child_layout = ui_child_layout_begin(cf_v2(graph_width, height));
+    BIT_SET(child_layout->state, UI_Layout_State_Fit_To_Item_Aabb_Y);
+    ui_layout_set_direction(0);
+    
+    ui_pop_layout_border_thickness();
+    ui_pop_layout_border_color();
+    
+    u64 start = frame->samples[0].start;
+    u64 end = frame->samples[0].end;
+    f32 range = (f32)(end - start);
+    
+    for (s32 index = 0; index < cf_array_count(frame->samples); ++index)
+    {
+        Profile_Sample* sample = frame->samples + index;
+        
+        s32 depth = 0;
+        
+        // resolve how deep into a callstack a sample is to offset along y axis
+        for (s32 depth_index = 0; depth_index < index; ++depth_index)
+        {
+            Profile_Sample* depth_sample = frame->samples + depth_index;
+            if (sample->start >= depth_sample->start && sample->end <= depth_sample->end)
+            {
+                depth++;
+            }
+        }
+        
+        f32 x0 = (sample->start - start) / range * inner_graph_width;
+        f32 x1 = (sample->end - start) / range * inner_graph_width;
+        
+        // this graph is going downwards with the root being very top
+        f32 y0 = -height * (depth + 1);
+        f32 y1 = -height * depth;
+        
+        {
+            ui_push_background_color(cf_color_grey());
+            ui_push_border_color(cf_color_white());
+            
+            UI_Item* item = ui_make_item();
+            
+            CF_V2 min = cf_v2(x0, y0);
+            CF_V2 max = cf_v2(x1, y1);
+            
+            f32 text_width = cf_text_width(sample->name, -1);
+            if (text_width < x1 - x0)
+            {
+                item->text = scratch_fmt("%s", sample->name);
+            }
+            item->aabb = cf_make_aabb(min, max);
+            item->text_aabb = item->aabb;
+            item->interactable_aabb = item->aabb;
+            
+            ui_pop_border_color();
+            ui_pop_background_color();
+        }
+        
+        // dump metrics
+        profiler_ui_sample_tooltip(profiler, index, sample);
+    }
+    
+    ui_child_layout_end();
+    
+    ui_do_text("Frame: %d | %.2fms", frame->frame, frame->samples[0].duration);
+    
+    // simple dump for visibility so you don't need to scrub the entire flame graph
+    for (s32 index = 0; index < cf_array_count(frame->samples); ++index)
+    {
+        Profile_Sample* sample = frame->samples + index;
+        ui_do_text("%s | %.2fms", sample->name, sample->duration);
+        profiler_ui_sample_tooltip(profiler, index, sample);
+    }
+    
 }
