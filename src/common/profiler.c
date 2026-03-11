@@ -79,9 +79,21 @@ void profile_file_write_sample(Profile_Sample* sample)
         CF_ThreadId tid = cf_thread_id();
         
         size_t length = CF_SNPRINTF(buffer, sizeof(buffer), 
-                                    "{ \"name\": \"%s\", \"cat\": \"PERF\", \"ph\": \"B\", \"pid\": 0, \"tid\": %" PRIu64 ", \"ts\": %.0f },\n" \
-                                    "{ \"name\": \"%s\", \"cat\": \"PERF\", \"ph\": \"E\", \"pid\": 0, \"tid\": %" PRIu64 ", \"ts\": %.0f },\n", 
-                                    sample->name, tid, start, sample->name, tid, end);
+                                    "{ \"name\": \"%s\", \"cat\": \"PERF\", \"ph\": \"B\", \"pid\": 0, \"tid\": %" PRIu64 ", \"ts\": %.0f, \"args\": { \"file\": \"%s\", \"line\": %d } },\n" \
+                                    "{ \"name\": \"%s\", \"cat\": \"PERF\", \"ph\": \"E\", \"pid\": 0, \"tid\": %" PRIu64 ", \"ts\": %.0f, \"args\": { \"file\": \"%s\", \"line\": %d } },\n", 
+                                    sample->name, tid, start, sample->file, sample->line, sample->name, tid, end, sample->file, sample->line);
+        
+        {
+            char* s = buffer;
+            while (s)
+            {
+                s = CF_STRCHR(s, '\\');
+                if (s)
+                {
+                    *s = '/';
+                }
+            }
+        }
         
         // only write whenever buffer is filled up to avoid hitting disk every sample
         if (cf_string_count(s_profiler->buffer) + length > cf_string_cap(s_profiler->buffer))
