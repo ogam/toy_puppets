@@ -49,6 +49,7 @@ typedef struct UI_Layout UI_Layout;
 typedef struct UI_Item UI_Item;
 
 typedef void (*ui_item_draw_fn)(UI_Layout* layout, UI_Item* item);
+typedef void (*ui_item_copy_fn)(UI_Item* dst, UI_Item* src, CF_Arena* arena);
 
 typedef struct UI_Item
 {
@@ -73,6 +74,7 @@ typedef struct UI_Item
     UI_Layout* layout;
     
     ui_item_draw_fn custom_draw;
+    ui_item_copy_fn custom_data_copy;
     void* custom_data;
     u64 custom_size;
     
@@ -343,6 +345,7 @@ b32 ui_item_is_hovered();
 u64 ui_layout_get_hash(UI_Layout* layout);
 UI_Item* ui_make_item_ex(UI_Layout* layout);
 UI_Item* ui_make_item();
+UI_Item ui_copy_item(UI_Item* src, CF_Arena* arena);
 UI_Item* ui_do_item_vfmt(const char* fmt, va_list args);
 UI_Item* ui_get_item(u64 hash);
 

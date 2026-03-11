@@ -2032,6 +2032,30 @@ UI_Item* ui_make_item()
     return ui_make_item_ex(layout);
 }
 
+UI_Item ui_copy_item(UI_Item* src, CF_Arena* arena)
+{
+    UI_Item item = *src;
+    if (item.text)
+    {
+        item.text = arena_fmt(arena, item.text);
+    }
+    if (item.custom_data)
+    {
+        if (item.custom_data_copy)
+        {
+            item.custom_data_copy(&item, src, arena);
+        }
+        else
+        {
+            void* dst = cf_arena_alloc(arena, (s32)item.custom_size);
+            CF_MEMCPY(dst, item.custom_data, item.custom_size);
+            item.custom_data = dst;
+        }
+    }
+    
+    return item;
+}
+
 UI_Item* ui_do_item_vfmt(const char* fmt, va_list args)
 {
     const char* text = scratch_vfmt(fmt, args);
@@ -2670,6 +2694,18 @@ typedef struct UI_Graph_Line_Data
     f32 max;
 } UI_Graph_Line_Data;
 
+void ui_copy_graph_line(UI_Item* dst, UI_Item* src, CF_Arena* arena)
+{
+    UI_Graph_Line_Data* data_src = (UI_Graph_Line_Data*)src->custom_data;
+    UI_Graph_Line_Data* data = (UI_Graph_Line_Data*)cf_arena_alloc(arena, sizeof(*data_src));
+    *data = *data_src;
+    
+    data->values = (f32*)cf_arena_alloc(arena, sizeof(data_src->values[0]) * data_src->count);
+    CF_MEMCPY(data->values, data_src->values, sizeof(data_src->values[0]) * data_src->count);
+    
+    dst->custom_data = data;
+}
+
 void ui_draw_graph_line(UI_Layout* layout, UI_Item* item)
 {
     CF_Aabb aabb = item->interactable_aabb;
@@ -2839,6 +2875,7 @@ b32 ui_do_graph_line(f32* values, s32 count, s32* select_index)
     data->max = max;
     
     item->custom_draw = ui_draw_graph_line;
+    item->custom_data_copy = ui_copy_graph_line;
     item->custom_data = data;
     item->custom_size = sizeof(*data);
     

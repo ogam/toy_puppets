@@ -32,17 +32,7 @@ Layout_Cache* game_ui_cache_layout(dyna Layout_Cache* layout_caches, UI_Layout* 
     
     for (s32 index = 0; index < cf_array_count(layout->items); ++index)
     {
-        UI_Item item = layout->items[index];
-        if (item.text)
-        {
-            item.text = arena_fmt(arena, item.text);
-        }
-        if (item.custom_data && item.custom_size)
-        {
-            void* dst = cf_arena_alloc(arena, (s32)item.custom_size);
-            CF_MEMCPY(dst, item.custom_data, item.custom_size);
-            item.custom_data = dst;
-        }
+        UI_Item item = ui_copy_item(layout->items + index, arena);
         if (item.layout)
         {
             item.layout = (UI_Layout*)game_ui_cache_layout(layout_caches, item.layout, arena);
@@ -460,7 +450,6 @@ void game_ui_close_all_tooltips()
     }
 }
 
-#if 0
 void game_ui_push_tooltip_content(UI_Layout* layout, Layout_Cache* layout_cache)
 {
     ui_layout_set_direction(layout_cache->direction);
@@ -475,19 +464,33 @@ void game_ui_push_tooltip_content(UI_Layout* layout, Layout_Cache* layout_cache)
     for (s32 index = 0; index < cf_array_count(layout_cache->items); ++index)
     {
         UI_Item item = layout_cache->items[index];
-        UI_Item* new_item = ui_make_item();
-        *new_item = item;
-        if (item.text)
+        
+        if (item.layout)
         {
-            new_item->text = scratch_fmt(item.text);
+            UI_Layout* child_layout = ui_child_layout_begin(cf_extents(item.aabb));
+            Layout_Cache* child_layout_cache = (Layout_Cache*)item.layout;
+            child_layout->state = child_layout_cache->state;
+            game_ui_push_tooltip_content(child_layout, child_layout_cache);
+            ui_child_layout_end();
         }
-        if (item.custom_data && item.custom_size)
+        else
         {
-            new_item->custom_data = scratch_copy(item.custom_data, item.custom_size);
-        }
-        if (BIT_IS_SET(item.state, UI_Item_State_Scrollbar))
-        {
-            new_item->state = 0;
+            UI_Item* new_item = ui_make_item();
+            u64 hash = new_item->hash;
+            *new_item = item;
+            new_item->hash = hash;
+            if (item.text)
+            {
+                new_item->text = scratch_fmt(item.text);
+            }
+            if (item.custom_data && item.custom_size)
+            {
+                new_item->custom_data = scratch_copy(item.custom_data, item.custom_size);
+            }
+            if (BIT_IS_SET(item.state, UI_Item_State_Scrollbar))
+            {
+                new_item->state = 0;
+            }
         }
     }
 }
@@ -501,84 +504,7 @@ void game_ui_do_tooltip_content(Pin_Tooltip* pin_tooltip)
     for (s32 index = 0; index < cf_array_count(layout_cache->items); ++index)
     {
         UI_Item item = layout_cache->items[index];
-        if (item.text)
-        {
-            item.text = scratch_fmt(item.text);
-        }
-        if (item.custom_data && item.custom_size)
-        {
-            item.custom_data = scratch_copy(item.custom_data, item.custom_size);
-        }
-        if (item.layout)
-        {
-            UI_Layout* child_layout = ui_child_layout_begin(cf_extents(item.aabb));
-            game_ui_push_tooltip_content(child_layout, pin_tooltip->layouts + (s32)(uintptr_t)(item.layout));
-            ui_child_layout_end();
-        }
-        else
-        {
-            cf_array_push(layout->items, item);
-        }
-    }
-}
-#else
-void game_ui_push_tooltip_content(UI_Layout* layout, Layout_Cache* layout_cache)
-{
-    ui_layout_set_direction(layout_cache->direction);
-    ui_layout_set_grid_direction(layout_cache->grid_direction);
-    ui_layout_set_alignment(layout_cache->alignment);
-    ui_layout_set_scrollable(layout_cache->scroll_direction, cf_v2(0, 0));
-    if (layout_cache->scroll_direction)
-    {
-        ui_layout_do_scrollbar(false);
-    }
-    
-    for (s32 index = 0; index < cf_array_count(layout_cache->items); ++index)
-    {
-        UI_Item item = layout_cache->items[index];
-        UI_Item* new_item = ui_make_item();
-        *new_item = item;
-        if (item.text)
-        {
-            new_item->text = scratch_fmt(item.text);
-        }
-        if (item.custom_data && item.custom_size)
-        {
-            new_item->custom_data = scratch_copy(item.custom_data, item.custom_size);
-        }
-        if (BIT_IS_SET(item.state, UI_Item_State_Scrollbar))
-        {
-            new_item->state = 0;
-        }
-        if (item.layout)
-        {
-            new_item->layout = NULL;
-            UI_Layout* child_layout = ui_child_layout_begin(cf_extents(item.aabb));
-            Layout_Cache* child_layout_cache = (Layout_Cache*)item.layout;
-            child_layout->state = child_layout_cache->state;
-            game_ui_push_tooltip_content(child_layout, child_layout_cache);
-            ui_child_layout_end();
-        }
-    }
-}
-
-void game_ui_do_tooltip_content(Pin_Tooltip* pin_tooltip)
-{
-    UI_Layout* layout = ui_peek_layout();
-    
-    Layout_Cache* layout_cache = pin_tooltip->layouts;
-    
-    for (s32 index = 0; index < cf_array_count(layout_cache->items); ++index)
-    {
-        UI_Item item = layout_cache->items[index];
-        if (item.text)
-        {
-            item.text = scratch_fmt(item.text);
-        }
-        if (item.custom_data && item.custom_size)
-        {
-            item.custom_data = scratch_copy(item.custom_data, item.custom_size);
-        }
+        
         if (item.layout)
         {
             UI_Layout* child_layout = ui_child_layout_begin(cf_extents(item.aabb));
@@ -589,11 +515,21 @@ void game_ui_do_tooltip_content(Pin_Tooltip* pin_tooltip)
         }
         else
         {
-            cf_array_push(layout->items, item);
+            UI_Item* new_item = ui_make_item();
+            u64 hash = new_item->hash;
+            *new_item = item;
+            new_item->hash = hash;
+            if (item.text)
+            {
+                new_item->text = scratch_fmt(item.text);
+            }
+            if (item.custom_data && item.custom_size)
+            {
+                new_item->custom_data = scratch_copy(item.custom_data, item.custom_size);
+            }
         }
     }
 }
-#endif
 
 void game_ui_do_tooltips()
 {
@@ -2579,7 +2515,7 @@ void profiler_ui_sample_tooltip(Profiler* profiler, s32 frame_index, Profile_Sam
         ui_push_layout_border_thickness(1);
         ui_push_layout_corner_radius(5);
         
-        ui_tooltip_begin(cf_extents(layout->aabb));
+        game_ui_tooltip_begin(cf_extents(layout->aabb));
         
         fixed f32* durations = NULL;
         MAKE_SCRATCH_ARRAY(durations, cf_array_count(profiler->frames));
@@ -2610,7 +2546,7 @@ void profiler_ui_sample_tooltip(Profiler* profiler, s32 frame_index, Profile_Sam
         ui_pop_border_thickness();
         
         ui_do_text("%s\n%s:%d\n%.2fms\n%" PRIu64 " | %" PRIu64" | %" PRIu64, sample->name, sample->file, sample->line, sample->duration, sample->start, sample->end, sample->end - sample->start);
-        ui_tooltip_end();
+        game_ui_tooltip_end();
         
         ui_pop_layout_background_color();
         ui_pop_layout_border_color();
