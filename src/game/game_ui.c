@@ -2583,7 +2583,7 @@ void profiler_ui_sample_tooltip(Profiler* profiler, s32 frame_index, Profile_Sam
         ui_push_border_thickness(1);
         ui_push_border_color(cf_color_white());
         
-        s32 graph_line_index = frame_index;
+        s32 graph_line_index = (frame_index - profiler->read_index + cf_array_count(profiler->frames)) % cf_array_count(profiler->frames);
         ui_do_graph_line(durations, cf_array_count(durations), &graph_line_index);
         
         ui_pop_border_color();
