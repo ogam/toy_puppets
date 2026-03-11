@@ -13,6 +13,16 @@ typedef struct Layout_Cache
 {
     CF_Aabb aabb;
     
+    CF_Color background_color;
+    CF_Color border_color;
+    CF_Color title_color;
+    f32 border_thickness;
+    f32 corner_radius;
+    f32 title_font_size;
+    f32 item_padding;
+    CF_Sprite sprite;
+    u8 sprite_mode;
+    
     UI_Layout_Direction direction;
     UI_Layout_Direction grid_direction;
     UI_Layout_Alignment alignment;
@@ -22,7 +32,6 @@ typedef struct Layout_Cache
     // ready only copies
     const char* title;
     fixed UI_Item* items;
-    f32 title_font_size;
 } Layout_Cache;
 
 typedef struct Game_Log

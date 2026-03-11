@@ -31,10 +31,10 @@ UI_STYLE_FUNCS(CF_Color, text_color);
 UI_STYLE_FUNCS(CF_Color, text_shadow_color);
 UI_STYLE_FUNCS(CF_Color, background_color);
 UI_STYLE_FUNCS(CF_Color, border_color);
-UI_STYLE_FUNCS(UI_Item_Alignment, item_alignment);
 UI_STYLE_FUNCS(f32, border_thickness);
 UI_STYLE_FUNCS(f32, corner_radius);
 UI_STYLE_FUNCS(b32, word_wrap);
+UI_STYLE_FUNCS(UI_Item_Alignment, item_alignment);
 
 UI_STYLE_FUNCS(CF_Color, idle_text_color);
 UI_STYLE_FUNCS(CF_Color, idle_text_shadow_color);
@@ -60,6 +60,9 @@ UI_STYLE_FUNCS(CF_Color, layout_title_color);
 UI_STYLE_FUNCS(f32, layout_border_thickness);
 UI_STYLE_FUNCS(f32, layout_corner_radius);
 UI_STYLE_FUNCS(f32, layout_item_padding);
+
+UI_STYLE_FUNCS(CF_Sprite, layout_sprite);
+UI_STYLE_FUNCS(UI_Layout_Sprite_Mode, layout_sprite_mode);
 
 bool ui_text_fx_keyword(CF_TextEffect* fx)
 {
@@ -147,6 +150,35 @@ void ui_draw_layout(UI_Layout* layout)
         cf_draw_push_color(layout->background_color);
         cf_draw_box_fill(layout->aabb, layout->corner_radius);
         cf_draw_pop_color();
+    }
+    
+    if (layout->sprite.id != 0)
+    {
+        CF_V2 extents = cf_extents(layout->aabb);
+        
+        layout->sprite.scale.x = extents.x / layout->sprite.w;
+        layout->sprite.scale.y = extents.y / layout->sprite.h;
+        
+        layout->sprite.transform.p = cf_center(layout->aabb);
+        
+        switch (layout->sprite_mode)
+        {
+            case UI_Layout_Sprite_Mode_Default:
+            {
+                cf_draw_sprite(&layout->sprite);
+                break;
+            }
+            case UI_Layout_Sprite_Mode_9_Slice:
+            {
+                cf_draw_sprite_9_slice(&layout->sprite);
+                break;
+            }
+            case UI_Layout_Sprite_Mode_9_Slice_Tiled:
+            {
+                cf_draw_sprite_9_slice_tiled(&layout->sprite);
+                break;
+            }
+        }
     }
     
     if (layout->border_color.a > 0)
@@ -379,7 +411,8 @@ void ui_style_reset()
     cf_array_clear(style->layout_title_colors);
     cf_array_clear(style->layout_border_thicknesss);
     cf_array_clear(style->layout_corner_radiuss);
-    
+    cf_array_clear(style->layout_sprites);
+    cf_array_clear(style->layout_sprite_modes);
     
     cf_array_fit(style->text_colors, 8);
     cf_array_fit(style->text_shadow_colors, 8);
@@ -408,6 +441,8 @@ void ui_style_reset()
     cf_array_fit(style->layout_title_colors, 8);
     cf_array_fit(style->layout_border_thicknesss, 8);
     cf_array_fit(style->layout_corner_radiuss, 8);
+    cf_array_fit(style->layout_sprites, 8);
+    cf_array_fit(style->layout_sprite_modes, 8);
     
     ui_push_text_color(cf_color_white());
     ui_push_text_shadow_color(cf_color_black());
@@ -441,6 +476,9 @@ void ui_style_reset()
     ui_push_layout_border_color(cf_color_clear());
     ui_push_layout_border_thickness(1.0f);
     ui_push_layout_corner_radius(0.0f);
+    
+    ui_push_layout_sprite((CF_Sprite){ 0 });
+    ui_push_layout_sprite_mode(UI_Layout_Sprite_Mode_Default);
 }
 
 void ui_push_camera()
@@ -550,6 +588,8 @@ UI_Layout* ui_layout_begin(const char* name)
         layout->title_color = ui_peek_layout_title_color();
         layout->border_thickness = ui_peek_layout_border_thickness();
         layout->corner_radius = ui_peek_layout_corner_radius();
+        layout->sprite = ui_peek_layout_sprite();
+        layout->sprite_mode = ui_peek_layout_sprite_mode();
         
         u64 layout_index = layout - ui->layouts;
         layout->item_hash = cf_fnv1a(name, (s32)CF_STRLEN(name));

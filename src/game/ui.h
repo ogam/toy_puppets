@@ -125,6 +125,14 @@ enum
     UI_Layout_State_Close_Button,
 };
 
+typedef u8 UI_Layout_Sprite_Mode;
+enum
+{
+    UI_Layout_Sprite_Mode_Default,
+    UI_Layout_Sprite_Mode_9_Slice,
+    UI_Layout_Sprite_Mode_9_Slice_Tiled
+};
+
 typedef struct UI_Layout
 {
     const char* name;
@@ -150,7 +158,8 @@ typedef struct UI_Layout
     f32 item_padding;
     s32 child_count;
     
-    //  @todo:  background and 9 slice
+    CF_Sprite sprite;
+    UI_Layout_Sprite_Mode sprite_mode;
     
     // (0, 0) is top left, (1, 1) is bottom right
     CF_V2 scroll;
@@ -191,6 +200,7 @@ typedef struct UI_Style
     dyna f32* border_thicknesss;
     dyna f32* corner_radiuss;
     dyna b32* word_wraps;
+    dyna UI_Item_Alignment* item_alignments;
     
     // UI_Item interactables
     dyna CF_Color* idle_text_colors;
@@ -219,7 +229,8 @@ typedef struct UI_Style
     dyna f32* layout_corner_radiuss;
     dyna f32* layout_item_paddings;
     
-    dyna UI_Item_Alignment* item_alignments;
+    dyna CF_Sprite* layout_sprites;
+    dyna UI_Layout_Sprite_Mode* layout_sprite_modes;
     
 } UI_Style;
 

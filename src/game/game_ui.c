@@ -15,6 +15,18 @@ Layout_Cache* game_ui_cache_layout(dyna Layout_Cache* layout_caches, UI_Layout* 
     cache->alignment = layout->alignment;
     cache->scroll_direction = layout->scroll_direction;
     cache->state = layout->state;
+    
+    cache->background_color = layout->background_color;
+    cache->border_color = layout->border_color;
+    cache->title_color = layout->title_color;
+    cache->border_thickness = layout->border_thickness;
+    cache->corner_radius = layout->corner_radius;
+    cache->title_font_size = layout->title_font_size;
+    cache->item_padding = layout->item_padding;
+    cache->sprite = layout->sprite;
+    cache->sprite_mode = layout->sprite_mode;
+    
+    
     {
         UI_Layout_Var var = ui_layout_get_var_ex(layout, cf_sintern("aabb"));
         cache->aabb = var.aabb;
@@ -467,11 +479,25 @@ void game_ui_push_tooltip_content(UI_Layout* layout, Layout_Cache* layout_cache)
         
         if (item.layout)
         {
-            UI_Layout* child_layout = ui_child_layout_begin(cf_extents(item.aabb));
             Layout_Cache* child_layout_cache = (Layout_Cache*)item.layout;
+            UI_Layout* child_layout = ui_child_layout_begin(cf_extents(item.aabb));
+            
+            child_layout->background_color = child_layout_cache->background_color;
+            child_layout->border_color = child_layout_cache->border_color;
+            child_layout->title_color = child_layout_cache->title_color;
+            child_layout->border_thickness = child_layout_cache->border_thickness;
+            child_layout->corner_radius = child_layout_cache->corner_radius;
+            child_layout->title_font_size = child_layout_cache->title_font_size;
+            child_layout->item_padding = child_layout_cache->item_padding;
+            child_layout->sprite = child_layout_cache->sprite;
+            child_layout->sprite_mode = child_layout_cache->sprite_mode;
+            
             child_layout->state = child_layout_cache->state;
             game_ui_push_tooltip_content(child_layout, child_layout_cache);
             ui_child_layout_end();
+            
+            ui_pop_layout_sprite();
+            ui_pop_layout_sprite_mode();
         }
         else
         {
@@ -507,11 +533,26 @@ void game_ui_do_tooltip_content(Pin_Tooltip* pin_tooltip)
         
         if (item.layout)
         {
-            UI_Layout* child_layout = ui_child_layout_begin(cf_extents(item.aabb));
             Layout_Cache* child_layout_cache = (Layout_Cache*)item.layout;
+            
+            UI_Layout* child_layout = ui_child_layout_begin(cf_extents(item.aabb));
+            
+            child_layout->background_color = child_layout_cache->background_color;
+            child_layout->border_color = child_layout_cache->border_color;
+            child_layout->title_color = child_layout_cache->title_color;
+            child_layout->border_thickness = child_layout_cache->border_thickness;
+            child_layout->corner_radius = child_layout_cache->corner_radius;
+            child_layout->title_font_size = child_layout_cache->title_font_size;
+            child_layout->item_padding = child_layout_cache->item_padding;
+            child_layout->sprite = child_layout_cache->sprite;
+            child_layout->sprite_mode = child_layout_cache->sprite_mode;
+            
             child_layout->state = child_layout_cache->state;
             game_ui_push_tooltip_content(child_layout, child_layout_cache);
             ui_child_layout_end();
+            
+            ui_pop_layout_sprite();
+            ui_pop_layout_sprite_mode();
         }
         else
         {
@@ -675,9 +716,10 @@ void game_ui_do_tooltips()
         ui_layout_set_title(creature_name);
         
         {
+            ui_push_layout_border_color(cf_color_clear());
             ui_push_layout_background_color(cf_color_clear());
+            
             UI_Layout* attributes_layout = ui_child_layout_begin(cf_v2(100.0f, 0));
-            ui_pop_layout_background_color();
             BIT_SET(attributes_layout->state, UI_Layout_State_Fit_To_Item_Aabb_Y);
             
             ui_do_text("Health");
@@ -692,9 +734,8 @@ void game_ui_do_tooltips()
             fixed char* move_speed_tooltip = game_ui_attributes_move_speed_tooltip(map_attributes);
             
             ui_do_same_line();
-            ui_push_layout_background_color(cf_color_clear());
+            
             attributes_layout = ui_child_layout_begin(cf_v2(100.0f, 0));
-            ui_pop_layout_background_color();
             BIT_SET(attributes_layout->state, UI_Layout_State_Fit_To_Item_Aabb_Y);
             
             ui_do_text("<embed_tooltip title=\"Health\" text=\"%s\">%d/%d</embed_tooltip>", health_tooltip, health_value, attributes.health);
@@ -703,6 +744,9 @@ void game_ui_do_tooltips()
             ui_do_text("<embed_tooltip title=\"Speed\" text=\"%s\">%.2f</embed_tooltip>", move_speed_tooltip, attributes.move_speed);
             
             ui_child_layout_end();
+            
+            ui_pop_layout_border_color(cf_color_clear());
+            ui_pop_layout_background_color();
         }
         
         for (s32 index = 0; index < cf_array_count(effects); ++index)
@@ -2545,7 +2589,9 @@ void profiler_ui_sample_tooltip(Profiler* profiler, s32 frame_index, Profile_Sam
         ui_pop_border_color();
         ui_pop_border_thickness();
         
-        ui_do_text("%s\n%s:%d\n%.2fms\n%" PRIu64 " | %" PRIu64" | %" PRIu64, sample->name, sample->file, sample->line, sample->duration, sample->start, sample->end, sample->end - sample->start);
+        s32 frame = profiler->frames[frame_index].frame;
+        
+        ui_do_text("%s | %d\n%s:%d\n%.2fms\n%" PRIu64 " | %" PRIu64" | %" PRIu64, sample->name, frame, sample->file, sample->line, sample->duration, sample->start, sample->end, sample->end - sample->start);
         game_ui_tooltip_end();
         
         ui_pop_layout_background_color();
@@ -2634,7 +2680,7 @@ void profiler_ui_do_flame_graph(Profiler* profiler, s32 frame_index)
         }
         
         // dump metrics
-        profiler_ui_sample_tooltip(profiler, index, sample);
+        profiler_ui_sample_tooltip(profiler, frame_index, sample);
     }
     
     ui_child_layout_end();
@@ -2646,7 +2692,6 @@ void profiler_ui_do_flame_graph(Profiler* profiler, s32 frame_index)
     {
         Profile_Sample* sample = frame->samples + index;
         ui_do_text("%s | %.2fms", sample->name, sample->duration);
-        profiler_ui_sample_tooltip(profiler, index, sample);
+        profiler_ui_sample_tooltip(profiler, frame_index, sample);
     }
-    
 }
