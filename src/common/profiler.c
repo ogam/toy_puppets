@@ -116,13 +116,15 @@ void profile_begin(const char* name, const char* file, s32 line)
     sample.name = name;
     sample.file = file;
     sample.line = line;
-    sample.start = cf_get_ticks();
     cf_array_push(frame->samples, sample);
     cf_array_push(frame->stack, index);
+    cf_array_last(frame->samples).start = cf_get_ticks();
 }
 
 void profile_end()
 {
+    u64 end = cf_get_ticks();
+    
     Profile_Frame* frame = s_profiler->frames + s_profiler->write_index;
     
     CF_ASSERT(cf_array_count(frame->stack) > 0);
@@ -131,7 +133,7 @@ void profile_end()
     
     Profile_Sample* sample = frame->samples + index;
     
-    sample->end = cf_get_ticks();
+    sample->end = end;
     // microseconds
     sample->duration = (sample->end - sample->start) * s_profiler->inv_freq * 1000.0;
     

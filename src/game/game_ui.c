@@ -464,6 +464,7 @@ void game_ui_close_all_tooltips()
 
 void game_ui_push_tooltip_content(UI_Layout* layout, Layout_Cache* layout_cache)
 {
+    PROFILE_BEGIN();
     ui_layout_set_direction(layout_cache->direction);
     ui_layout_set_grid_direction(layout_cache->grid_direction);
     ui_layout_set_alignment(layout_cache->alignment);
@@ -519,10 +520,14 @@ void game_ui_push_tooltip_content(UI_Layout* layout, Layout_Cache* layout_cache)
             }
         }
     }
+    
+    PROFILE_END();
 }
 
 void game_ui_do_tooltip_content(Pin_Tooltip* pin_tooltip)
 {
+    PROFILE_BEGIN();
+    
     UI_Layout* layout = ui_peek_layout();
     
     Layout_Cache* layout_cache = pin_tooltip->layouts;
@@ -570,6 +575,8 @@ void game_ui_do_tooltip_content(Pin_Tooltip* pin_tooltip)
             }
         }
     }
+    
+    PROFILE_END();
 }
 
 void game_ui_do_tooltips()
