@@ -628,23 +628,15 @@ void game_ui_do_tooltips()
         if (ui_layout_is_down(layout))
         {
             CF_V2 drag_offset = cf_sub(mouse_position, ui->down_root_layout_offset);
-            drag_offset = cf_sub(drag_offset, ui_layout_get_anchor(layout));
             
-            if (BIT_IS_SET(layout_cache->alignment, UI_Layout_Alignment_Vertical_Top))
+            if (ui_layout_has_var_ex(layout, "aabb"))
             {
-                drag_offset.y += layout->item_padding;
+                UI_Layout_Var var = ui_layout_get_var_ex(layout, "aabb");
+                drag_offset = cf_sub(drag_offset, var.aabb.min);
             }
-            else if (BIT_IS_SET(layout_cache->alignment, UI_Layout_Alignment_Vertical_Bottom))
+            else
             {
-                drag_offset.y -= layout->item_padding;
-            }
-            if (BIT_IS_SET(layout_cache->alignment, UI_Layout_Alignment_Horizontal_Left))
-            {
-                drag_offset.x -= layout->item_padding;
-            }
-            else if (BIT_IS_SET(layout_cache->alignment, UI_Layout_Alignment_Horizontal_Right))
-            {
-                drag_offset.x += layout->item_padding;
+                drag_offset = cf_sub(drag_offset, layout->aabb.min);
             }
             
             layout_cache->aabb = move_aabb(layout_cache->aabb, drag_offset);

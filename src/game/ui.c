@@ -1900,7 +1900,7 @@ void ui_handle_input()
         
         ui->hover_layout_name = layout->name;
         ui->hover_layout_position = mouse_position;
-        layout_mouse_offset = cf_sub(mouse_position, ui_layout_get_anchor(layout));
+        layout_mouse_offset = cf_sub(mouse_position, layout->aabb.min);
         hover_layout = layout;
     }
     
@@ -1948,7 +1948,7 @@ void ui_handle_input()
             }
             
             ui->down_root_layout_position = ui->hover_layout_position;
-            ui->down_root_layout_offset = cf_sub(mouse_position, ui_layout_get_anchor(root));
+            ui->down_root_layout_offset = cf_sub(mouse_position, root->aabb.min);
         }
     }
     
