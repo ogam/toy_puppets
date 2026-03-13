@@ -2738,6 +2738,8 @@ typedef struct UI_Graph_Line_Data
     s32 select_index;
     f32 min;
     f32 max;
+    f32 padded_min;
+    f32 padded_max;
 } UI_Graph_Line_Data;
 
 void ui_copy_graph_line(UI_Item* dst, UI_Item* src, CF_Arena* arena)
@@ -2783,6 +2785,8 @@ void ui_draw_graph_line(UI_Layout* layout, UI_Item* item)
     f32* values = data->values;
     f32 min = data->min;
     f32 max = data->max;
+    f32 padded_min = data->padded_min;
+    f32 padded_max = data->padded_max;
     f32 range = data->max - data->min;
     s32 walk_count = cf_max(data->count - 1, 1);
     
@@ -2794,10 +2798,10 @@ void ui_draw_graph_line(UI_Layout* layout, UI_Item* item)
         CF_V2 p1 = cf_v2(0, 0);
         
         p0.x = cf_remap01((f32)index / walk_count, aabb.min.x, aabb.max.x);
-        p0.y = cf_remap(values[index], data->min, data->max, aabb.min.y, aabb.max.y);
+        p0.y = cf_remap(values[index], padded_min, padded_max, aabb.min.y, aabb.max.y);
         
         p1.x = cf_remap01((f32)(index + 1) / walk_count, aabb.min.x, aabb.max.x);
-        p1.y = cf_remap(values[index + 1], min, max, aabb.min.y, aabb.max.y);
+        p1.y = cf_remap(values[index + 1], padded_min, padded_max, aabb.min.y, aabb.max.y);
         
         cf_draw_line(p0, p1, 1.0f);
     }
@@ -2807,7 +2811,7 @@ void ui_draw_graph_line(UI_Layout* layout, UI_Item* item)
     {
         CF_V2 p = cf_v2(0, 0);
         p.x = (f32)data->select_index / walk_count;
-        p.y = cf_remap(values[data->select_index], data->min, data->max, 0.0f, 1.0f);
+        p.y = cf_remap(values[data->select_index], padded_min, padded_max, 0.0f, 1.0f);
         
         p.x = cf_remap01(p.x, aabb.min.x, aabb.max.x);
         p.y = cf_remap01(p.y, aabb.min.y, aabb.max.y);
@@ -2820,12 +2824,56 @@ void ui_draw_graph_line(UI_Layout* layout, UI_Item* item)
     f32 font_size = item->font_size;
     char buffer[256];
     
+    // padded_max
+    {
+        CF_SNPRINTF(buffer, sizeof(buffer), "%.2f", padded_max);
+        
+        CF_V2 text_position = cf_top_left(aabb);
+        text_position.y += cf_text_height(buffer, -1);
+        CF_V2 shadow_position = cf_add(text_position, cf_v2(1.0f, -1.0f));
+        
+        cf_push_font_size(font_size);
+        
+        cf_draw_push_color(item->text_shadow_color);
+        cf_draw_text(buffer, shadow_position, -1);
+        cf_draw_pop_color();
+        
+        cf_draw_push_color(item->text_color);
+        cf_draw_text(buffer, text_position, -1);
+        cf_draw_pop_color();
+        
+        cf_pop_font_size();
+    }
+    
+    // padded_min
+    {
+        CF_SNPRINTF(buffer, sizeof(buffer), "%.2f", padded_min);
+        
+        CF_V2 text_position = cf_bottom_left(aabb);
+        CF_V2 shadow_position = cf_add(text_position, cf_v2(1.0f, -1.0f));
+        
+        cf_push_font_size(font_size);
+        
+        cf_draw_push_color(item->text_shadow_color);
+        cf_draw_text(buffer, shadow_position, -1);
+        cf_draw_pop_color();
+        
+        cf_draw_push_color(item->text_color);
+        cf_draw_text(buffer, text_position, -1);
+        cf_draw_pop_color();
+        
+        cf_pop_font_size();
+    }
+    
     // max
     {
         CF_SNPRINTF(buffer, sizeof(buffer), "%.2f", max);
         
-        CF_V2 text_position = cf_top_left(aabb);
-        text_position.y += cf_text_height(buffer, -1);
+        CF_V2 text_size = cf_text_size(buffer, -1);
+        
+        CF_V2 text_position = cf_top_right(aabb);
+        text_position.x -= text_size.x * 0.5f;
+        text_position.y += text_size.y;
         CF_V2 shadow_position = cf_add(text_position, cf_v2(1.0f, -1.0f));
         
         cf_push_font_size(font_size);
@@ -2845,7 +2893,8 @@ void ui_draw_graph_line(UI_Layout* layout, UI_Item* item)
     {
         CF_SNPRINTF(buffer, sizeof(buffer), "%.2f", min);
         
-        CF_V2 text_position = cf_bottom_left(aabb);
+        CF_V2 text_position = cf_bottom_right(aabb);
+        text_position.x -= cf_text_width(buffer, -1) * 0.5f;
         CF_V2 shadow_position = cf_add(text_position, cf_v2(1.0f, -1.0f));
         
         cf_push_font_size(font_size);
@@ -2879,8 +2928,8 @@ b32 ui_do_graph_line(f32* values, s32 count, s32* select_index)
     }
     
     f32 range = max - min;
-    max += range * 0.5f;
-    min -= range * 0.5f;
+    f32 padded_max = max + range * 0.5f;
+    f32 padded_min = min - range * 0.5f;
     
     CF_Aabb aabb = cf_make_aabb_from_top_left(cf_v2(0, 0), graph_width, graph_height);
     UI_Item* item = ui_make_item();
@@ -2919,6 +2968,8 @@ b32 ui_do_graph_line(f32* values, s32 count, s32* select_index)
     data->select_index = peek_select_index;
     data->min = min;
     data->max = max;
+    data->padded_min = padded_min;
+    data->padded_max = padded_max;
     
     item->custom_draw = ui_draw_graph_line;
     item->custom_data_copy = ui_copy_graph_line;
