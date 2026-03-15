@@ -6,7 +6,7 @@ Body_Proportions make_default_body_proportions()
     proportions.scale = 1.0f;
     proportions.head_scale = 1.0f;
     proportions.neck_thickness = 1.0f;
-    proportions.torso_chubiness = 1.0f;
+    proportions.torso_chubbiness = 1.0f;
     
     proportions.upper_arm_thickness = 1.0f;
     proportions.lower_arm_thickness = 1.0f;
@@ -34,7 +34,7 @@ Body_Proportions make_random_body_proportions()
         &proportions.scale,
         &proportions.head_scale,
         &proportions.neck_thickness,
-        &proportions.torso_chubiness,
+        &proportions.torso_chubbiness,
         &proportions.upper_arm_thickness,
         &proportions.lower_arm_thickness,
         &proportions.hand_thickness,
@@ -119,6 +119,87 @@ void body_scale(Body* body, Body_Proportions proportions)
     if (body->type == Body_Type_Human)
     {
         body_human_scale(body, proportions);
+    }
+}
+
+void body_shatter(Body* body)
+{
+    CF_MEMSET(body->is_locked, 0, sizeof(*body->is_locked) * cf_array_size(body->is_locked));
+    
+    switch (body->type)
+    {
+        case Body_Type_Human:
+        {
+            // dislocate shoulders, hip and base of neck
+            for (s32 index = cf_array_count(body->constraints) - 1; index >= 0; --index)
+            {
+                Particle_Constraint constraint = body->constraints[index];
+                if ((constraint.a == Body_Human_Left_Shoulder_Socket && constraint.b == Body_Human_Left_Shoulder) || 
+                    (constraint.a == Body_Human_Right_Shoulder_Socket && constraint.b == Body_Human_Right_Shoulder) ||
+                    (constraint.a == Body_Human_Left_Hip_Socket && constraint.b == Body_Human_Left_Hip) || 
+                    (constraint.a == Body_Human_Right_Hip_Socket && constraint.b == Body_Human_Right_Hip) || 
+                    (constraint.a == Body_Human_Neck_Socket && constraint.b == Body_Human_Neck))
+                {
+                    cf_array_del(body->constraints, index);
+                }
+                
+                // make sure limbs are stiff
+                if (constraint.a == Body_Human_Left_Elbow || constraint.b == Body_Human_Left_Elbow ||
+                    constraint.a == Body_Human_Right_Elbow || constraint.b == Body_Human_Right_Elbow ||
+                    constraint.a == Body_Human_Left_Knee || constraint.b == Body_Human_Left_Knee ||
+                    constraint.a == Body_Human_Right_Knee || constraint.b == Body_Human_Right_Knee ||
+                    constraint.a == Body_Human_Head || constraint.b == Body_Human_Head)
+                {
+                    constraint.stiffness = 1.0f;
+                }
+            }
+            
+            break;
+        }
+        case Body_Type_Slime:
+        {
+            // separate into chunks
+            break;
+        }
+        case Body_Type_Tubeman:
+        {
+            // dislocate shoulders
+            for (s32 index = cf_array_count(body->constraints) - 1; index >= 0; --index)
+            {
+                Particle_Constraint constraint = body->constraints[index];
+                if ((constraint.a == Body_Tubeman_Left_Shoulder && constraint.b == Body_Tubeman_Segment_Left_3) ||
+                    (constraint.a == Body_Tubeman_Right_Shoulder && constraint.b == Body_Tubeman_Segment_Right_3))
+                {
+                    cf_array_del(body->constraints, index);
+                }
+                
+                // make sure limbs are stiff
+                if (constraint.a == Body_Tubeman_Left_Elbow || constraint.b == Body_Tubeman_Left_Elbow ||
+                    constraint.a == Body_Tubeman_Right_Elbow || constraint.b == Body_Tubeman_Right_Elbow)
+                {
+                    constraint.stiffness = 1.0f;
+                }
+            }
+            break;
+        }
+    }
+}
+
+void body_apply_friction(Body* body)
+{
+    f32 ground_y = body->position.y;
+    
+    for (s32 index = 0; index < cf_array_count(body->particles); ++index)
+    {
+        CF_V2 current = body->particles[index];
+        CF_V2 prev = body->prev_particles[index];
+        
+        f32 y = current.y;
+        f32 dy = y - ground_y;
+        if (cf_abs(dy) < 1e-7f || y < ground_y)
+        {
+            body->accelerations[index].x += (prev.x - current.x) * 500.0f;
+        }
     }
 }
 
@@ -208,6 +289,11 @@ void body_stabilize(Body* body)
             body_hand_stabilize(body);
             break;
         }
+        case Body_Type_Tubeman:
+        {
+            body_tubeman_stabilize(body);
+            break;
+        }
     }
 }
 
@@ -274,6 +360,11 @@ void body_draw(Body* body, Body_Proportions proportions)
             body_hand_draw(body, proportions);
             break;
         }
+        case Body_Type_Tubeman:
+        {
+            body_tubeman_draw(body, proportions);
+            break;
+        }
     }
 }
 
@@ -303,10 +394,72 @@ CF_Aabb body_get_bounds(Body* body)
     {
         if (body->type == Body_Type_Human)
         {
+            s32 ignore_list[] = 
+            {
+                Body_Human_Left_Shoulder,
+                Body_Human_Left_Elbow,
+                Body_Human_Left_Hand,
+                Body_Human_Right_Shoulder,
+                Body_Human_Right_Elbow,
+                Body_Human_Right_Hand,
+            };
+            
             for (s32 index = 0; index < cf_array_count(body->particles); ++index)
             {
-                if (index == Body_Human_Left_Elbow || index == Body_Human_Left_Hand ||
-                    index == Body_Human_Right_Elbow || index == Body_Human_Right_Hand)
+                b32 skip = false;
+                for (s32 ignore_index = 0; ignore_index < CF_ARRAY_SIZE(ignore_list); ++ignore_index)
+                {
+                    if (index == ignore_list[ignore_index])
+                    {
+                        skip = true;
+                        break;
+                    }
+                }
+                
+                if (skip)
+                {
+                    continue;
+                }
+                
+                CF_V2 position = body->particles[index];
+                min = cf_min(min, position);
+                max = cf_max(max, position);
+            }
+        }
+        else if (body->type == Body_Type_Tubeman)
+        {
+            s32 ignore_list[] = 
+            {
+                Body_Tubeman_Left_Elbow,
+                Body_Tubeman_Left_Hand,
+                Body_Tubeman_Right_Elbow,
+                Body_Tubeman_Right_Hand,
+                Body_Tubeman_Left_Shoulder,
+                Body_Tubeman_Right_Shoulder,
+                Body_Tubeman_Hair_0_0,
+                Body_Tubeman_Hair_0_1,
+                Body_Tubeman_Hair_0_2,
+                Body_Tubeman_Hair_1_0,
+                Body_Tubeman_Hair_1_1,
+                Body_Tubeman_Hair_1_2,
+                Body_Tubeman_Hair_2_0,
+                Body_Tubeman_Hair_2_1,
+                Body_Tubeman_Hair_2_2,
+            };
+            
+            for (s32 index = 0; index < cf_array_count(body->particles); ++index)
+            {
+                b32 skip = false;
+                for (s32 ignore_index = 0; ignore_index < CF_ARRAY_SIZE(ignore_list); ++ignore_index)
+                {
+                    if (index == ignore_list[ignore_index])
+                    {
+                        skip = true;
+                        break;
+                    }
+                }
+                
+                if (skip)
                 {
                     continue;
                 }
@@ -352,6 +505,13 @@ CF_Aabb body_get_particle_bounds(Body* body, s32* particles, s32 count)
     return bounds;
 }
 
+void body_apply_force(Body* body, CF_V2 force)
+{
+    for (s32 index = 0; index < cf_array_count(body->accelerations); ++index)
+    {
+        body->accelerations[index] = cf_add(body->accelerations[index], force);
+    }
+}
 
 void body_teleport(Body* body, CF_V2 position)
 {
@@ -370,7 +530,7 @@ void body_teleport(Body* body, CF_V2 position)
 
 Body make_human_body(f32 height)
 {
-    Body body = make_default_body(Body_Type_Human, 14, height);
+    Body body = make_default_body(Body_Type_Human, Body_Human_Count, height);
     
     f32 head_height = height * 1.00f;
     f32 torso_height = height * 0.90f;
@@ -406,6 +566,12 @@ Body make_human_body(f32 height)
         body.particles[Body_Human_Left_Foot] = cf_v2(-shoulder_width, 0.0f);
         body.particles[Body_Human_Right_Foot] = cf_v2(shoulder_width, 0.0f);
         
+        body.particles[Body_Human_Left_Hip_Socket] = body.particles[Body_Human_Left_Hip];
+        body.particles[Body_Human_Right_Hip_Socket] = body.particles[Body_Human_Right_Hip];
+        body.particles[Body_Human_Left_Shoulder_Socket] = body.particles[Body_Human_Left_Shoulder];
+        body.particles[Body_Human_Right_Shoulder_Socket] = body.particles[Body_Human_Right_Shoulder];
+        body.particles[Body_Human_Neck_Socket] = body.particles[Body_Human_Neck];
+        
         CF_MEMCPY(body.prev_particles, body.particles, sizeof(*body.particles) * cf_array_count(body.particles));
     }
     
@@ -414,38 +580,38 @@ Body make_human_body(f32 height)
     
     // torso
     {
-        constraint.a = Body_Human_Left_Hip;
-        constraint.b = Body_Human_Right_Hip;
+        constraint.a = Body_Human_Left_Hip_Socket;
+        constraint.b = Body_Human_Right_Hip_Socket;
         constraint.length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
         constraint.base_length = constraint.length;
         cf_array_push(body.constraints, constraint);
         
-        constraint.a = Body_Human_Left_Hip;
-        constraint.b = Body_Human_Left_Shoulder;
+        constraint.a = Body_Human_Left_Hip_Socket;
+        constraint.b = Body_Human_Left_Shoulder_Socket;
         constraint.length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
         constraint.base_length = constraint.length;
         cf_array_push(body.constraints, constraint);
         
-        constraint.a = Body_Human_Right_Hip;
-        constraint.b = Body_Human_Right_Shoulder;
+        constraint.a = Body_Human_Right_Hip_Socket;
+        constraint.b = Body_Human_Right_Shoulder_Socket;
         constraint.length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
         constraint.base_length = constraint.length;
         cf_array_push(body.constraints, constraint);
         
-        constraint.a = Body_Human_Left_Shoulder;
-        constraint.b = Body_Human_Right_Shoulder;
+        constraint.a = Body_Human_Left_Shoulder_Socket;
+        constraint.b = Body_Human_Right_Shoulder_Socket;
         constraint.length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
         constraint.base_length = constraint.length;
         cf_array_push(body.constraints, constraint);
         
-        constraint.a = Body_Human_Left_Shoulder;
-        constraint.b = Body_Human_Right_Hip;
+        constraint.a = Body_Human_Left_Shoulder_Socket;
+        constraint.b = Body_Human_Right_Hip_Socket;
         constraint.length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
         constraint.base_length = constraint.length;
         cf_array_push(body.constraints, constraint);
         
-        constraint.a = Body_Human_Left_Hip;
-        constraint.b = Body_Human_Right_Shoulder;
+        constraint.a = Body_Human_Left_Hip_Socket;
+        constraint.b = Body_Human_Right_Shoulder_Socket;
         constraint.length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
         constraint.base_length = constraint.length;
         cf_array_push(body.constraints, constraint);
@@ -556,6 +722,39 @@ Body make_human_body(f32 height)
         cf_array_push(body.constraints, constraint);
     }
     
+    // sockets
+    {
+        constraint.a = Body_Human_Left_Hip_Socket;
+        constraint.b = Body_Human_Left_Hip;
+        constraint.length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.base_length = constraint.length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Human_Right_Hip_Socket;
+        constraint.b = Body_Human_Right_Hip;
+        constraint.length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.base_length = constraint.length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Human_Left_Shoulder_Socket;
+        constraint.b = Body_Human_Left_Shoulder;
+        constraint.length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.base_length = constraint.length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Human_Right_Shoulder_Socket;
+        constraint.b = Body_Human_Right_Shoulder;
+        constraint.length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.base_length = constraint.length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Human_Neck_Socket;
+        constraint.b = Body_Human_Neck;
+        constraint.length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.base_length = constraint.length;
+        cf_array_push(body.constraints, constraint);
+    }
+    
     return body;
 }
 
@@ -660,13 +859,13 @@ void body_human_draw(Body* body, Body_Proportions proportions)
     f32 lower_leg_thickness = body->height * 0.04f * proportions.lower_leg_thickness;;
     f32 foot_thickness = body->height * 0.02f * proportions.foot_thickness;;
     
-    f32 torso_chubiness = body->height * 0.02f * proportions.torso_chubiness;
+    f32 torso_chubbiness = body->height * 0.02f * proportions.torso_chubbiness;
     
     CF_Poly torso = { 0 };
-    torso.verts[0] = body->particles[Body_Human_Left_Hip];
-    torso.verts[1] = body->particles[Body_Human_Right_Hip];
-    torso.verts[2] = body->particles[Body_Human_Right_Shoulder];
-    torso.verts[3] = body->particles[Body_Human_Left_Shoulder];
+    torso.verts[0] = body->particles[Body_Human_Left_Hip_Socket];
+    torso.verts[1] = body->particles[Body_Human_Right_Hip_Socket];
+    torso.verts[2] = body->particles[Body_Human_Right_Shoulder_Socket];
+    torso.verts[3] = body->particles[Body_Human_Left_Shoulder_Socket];
     torso.count = 4;
     cf_make_poly(&torso);
     
@@ -693,19 +892,7 @@ void body_human_draw(Body* body, Body_Proportions proportions)
     cf_draw_line(body->particles[Body_Human_Neck], body->particles[Body_Human_Head], neck_thickness);
     cf_draw_pop_color();
     
-    // body can be squished so try to at least still draw something
-    if (torso.count > 2)
-    {
-        cf_draw_polygon_fill(torso.verts, torso.count, torso_chubiness);
-    }
-    else if (torso.count == 2)
-    {
-        cf_draw_line(torso.verts[0], torso.verts[1], torso_chubiness);
-    }
-    else
-    {
-        cf_draw_circle_fill2(torso.verts[0], torso_chubiness);
-    }
+    body_draw_polygon_fill(torso, torso_chubbiness);
     
     cf_draw_circle_fill2(body->particles[Body_Human_Head], head_radius);
     
@@ -877,9 +1064,9 @@ void body_human_kick_co(CF_Coroutine co)
     
     if (body_human_is_flipped(body))
     {
-        TOY_SWAP(s32, foot_index, off_index);
-        TOY_SWAP(s32, hip_index, off_hip_index);
-        TOY_SWAP(s32, knee_index, off_knee_index);
+        TOY_SWAP(foot_index, off_index);
+        TOY_SWAP(hip_index, off_hip_index);
+        TOY_SWAP(knee_index, off_knee_index);
     }
     
     CF_V2 old_foot_position = body->particles[foot_index];
@@ -1031,12 +1218,6 @@ void body_human_fix_head_co(CF_Coroutine co)
     
     World* world = &s_app->world;
     
-    //body->is_locked[Body_Human_Left_Hip] = true;
-    //body->is_locked[Body_Human_Right_Hip] = true;
-    //body->is_locked[Body_Human_Left_Knee] = true;
-    //body->is_locked[Body_Human_Right_Knee] = true;
-    //body->is_locked[Body_Human_Left_Foot] = true;
-    //body->is_locked[Body_Human_Right_Foot] = true;
     body->is_locked[Body_Human_Neck] = true;
     
     CF_V2* left_hand = body->particles + Body_Human_Left_Hand;
@@ -1091,12 +1272,6 @@ void body_human_fix_head_co(CF_Coroutine co)
         cf_coroutine_yield(co);
     }
     
-    //body->is_locked[Body_Human_Left_Hip] = false;
-    //body->is_locked[Body_Human_Right_Hip] = false;
-    //body->is_locked[Body_Human_Left_Knee] = false;
-    //body->is_locked[Body_Human_Right_Knee] = false;
-    //body->is_locked[Body_Human_Left_Foot] = false;
-    //body->is_locked[Body_Human_Right_Foot] = false;
     body->is_locked[Body_Human_Neck] = false;
     body->is_locked[Body_Human_Head] = false;
 }
@@ -1352,8 +1527,6 @@ void body_slime_draw(Body* body, Body_Proportions proportions)
     CF_Aabb scissor = cf_expand_aabb(body_get_bounds(body), cf_v2(50.0f, 0.0f));
     scissor.max.y += 50.0f;
     
-    //push_scissor(scissor);
-    
     for (s32 index = 1; index < Body_Slime_Count; ++index)
     {
         s32 i0 = index % Body_Slime_Count;
@@ -1375,8 +1548,6 @@ void body_slime_draw(Body* body, Body_Proportions proportions)
         
         cf_draw_tri_fill(p0, p1, p2, 10.0f);
     }
-    
-    //pop_scissor();
 }
 
 void body_slime_walk(Body* body, CF_V2 direction, f32 move_speed)
@@ -1543,29 +1714,13 @@ void body_slime_forward_spike_co(CF_Coroutine co)
 
 Body make_hand_body(f32 height)
 {
-    Body body = { 0 };
-    body.type = Body_Type_Hand;
-    s32 particle_count = Body_Hand_Count;
-    cf_array_fit(body.prev_particles, particle_count);
-    cf_array_fit(body.particles, particle_count);
-    cf_array_fit(body.accelerations, particle_count);
-    cf_array_fit(body.constraints, particle_count * 2);
-    cf_array_fit(body.is_locked, particle_count);
-    cf_array_fit(body.hurt_particles, particle_count);
+    Body body = make_default_body(Body_Type_Hand, Body_Hand_Count, height);
     
     body.facing_direction = 1.0f;
     body.height = height;
     body.base_height = height;
     body.time_step = 1.0f / TARGET_FRAMERATE;
     body.wheel_angle = CF_PI * 0.5f;
-    
-    for (s32 index = 0; index < particle_count; ++index)
-    {
-        cf_array_push(body.prev_particles, cf_v2(0.0f, (f32)index));
-        cf_array_push(body.particles, cf_v2(0.0f, (f32)index));
-        cf_array_push(body.accelerations, cf_v2(0, 0));
-        cf_array_push(body.is_locked, false);
-    }
     
     // index
     {
@@ -1720,16 +1875,17 @@ void body_hand_draw(Body* body, Body_Proportions proportions)
     f32 joint_thickness = body->height * 0.075f;
     f32 base_thickness = body->height * 0.1f;
     
-    f32 palm_chubbiness = body->height * 0.05f;
+    CF_Poly palm = { 0 };
+    palm.count = 5;
+    palm.verts[0] = body->particles[Body_Hand_Index_Base];
+    palm.verts[1] = body->particles[Body_Hand_Middle_Base];
+    palm.verts[2] = body->particles[Body_Hand_Pinky_Base];
+    palm.verts[3] = body->particles[Body_Hand_Wrist];
+    palm.verts[4] = body->particles[Body_Hand_Thumb_Base];
     
-    CF_V2 palm[] =
-    {
-        body->particles[Body_Hand_Index_Base],
-        body->particles[Body_Hand_Middle_Base],
-        body->particles[Body_Hand_Pinky_Base],
-        body->particles[Body_Hand_Wrist],
-        body->particles[Body_Hand_Thumb_Base],
-    };
+    cf_make_poly(&palm);
+    
+    f32 palm_chubbiness = body->height * 0.05f;
     
     CF_Color upper_color = cf_draw_peek_color();
     CF_Color lower_color = upper_color;
@@ -1761,9 +1917,8 @@ void body_hand_draw(Body* body, Body_Proportions proportions)
     
     cf_draw_pop_color();
     
-    cf_draw_polygon_fill(palm, CF_ARRAY_SIZE(palm), palm_chubbiness);
+    body_draw_polygon_fill(palm, palm_chubbiness);
 }
-
 
 void body_hand_move(Body* body, CF_V2 position)
 {
@@ -1937,16 +2092,19 @@ void body_hand_slap_co(CF_Coroutine co)
     // slap hits
     {
         CF_Aabb slap_bounds = body_get_bounds(body);
-        fixed ecs_entity_t* queries = spatial_map_query(&world->spatial_map, BIT(TOY_PLAYER_INDEX), slap_bounds);
+        fixed ecs_entity_t* queries = spatial_map_query(&world->spatial_map, BIT(TOY_SLAP_INDEX), slap_bounds);
         for (s32 index = 0; index < cf_array_count(queries); ++index)
         {
-            C_Puppet* puppet = ECS_GET(queries[index], C_Puppet);
-            CF_V2 force = cf_v2(-puppet->body.facing_direction * 15000.0f, 15000.0f);
-            body_slap(&puppet->body, force);
-            
-            CF_Aabb slap_region = body_get_bounds(&puppet->body);
-            slap_region = cf_clamp_aabb(slap_region, slap_bounds);
-            make_event_hand_slap_hit(queries[index], slap_region);
+            if (ECS_HAS(queries[index], C_Slappable))
+            {
+                C_Puppet* puppet = ECS_GET(queries[index], C_Puppet);
+                CF_V2 force = cf_v2(-puppet->body.facing_direction * 15000.0f, 15000.0f);
+                body_slap(&puppet->body, force);
+                
+                CF_Aabb slap_region = body_get_bounds(&puppet->body);
+                slap_region = cf_clamp_aabb(slap_region, slap_bounds);
+                make_event_hand_slap_hit(queries[index], slap_region);
+            }
         }
     }
     
@@ -2003,7 +2161,694 @@ void body_hand_cast(Body* body)
 
 // @hand
 
+// @tubeman
+
+Body make_tubeman_body(f32 height)
+{
+    Body body = make_default_body(Body_Type_Tubeman, Body_Tubeman_Count, height);
+    
+    body.facing_direction = 1.0f;
+    body.height = height;
+    body.base_height = height;
+    body.time_step = 1.0f / TARGET_FRAMERATE;
+    body.wheel_angle = CF_PI * 0.5f;
+    
+    f32 width = height * 0.15f;
+    f32 half_width = width * 0.5f;
+    
+    f32 segment_height = height / 5;
+    f32 arm_length = height * 0.75f;
+    
+    body.particles[Body_Tubeman_Segment_Left_0] = cf_v2(-half_width, 0 * segment_height);
+    body.particles[Body_Tubeman_Segment_Right_0] = cf_v2(half_width, 0 * segment_height);
+    body.particles[Body_Tubeman_Segment_Left_1] = cf_v2(-half_width, 1 * segment_height);
+    body.particles[Body_Tubeman_Segment_Right_1] = cf_v2(half_width, 1 * segment_height);
+    body.particles[Body_Tubeman_Segment_Left_2] = cf_v2(-half_width, 2 * segment_height);
+    body.particles[Body_Tubeman_Segment_Right_2] = cf_v2(half_width, 2 * segment_height);
+    body.particles[Body_Tubeman_Segment_Left_3] = cf_v2(-half_width, 3 * segment_height);
+    body.particles[Body_Tubeman_Segment_Right_3] = cf_v2(half_width, 3 * segment_height);
+    body.particles[Body_Tubeman_Segment_Left_4] = cf_v2(-half_width, 4 * segment_height);
+    body.particles[Body_Tubeman_Segment_Right_4] = cf_v2(half_width, 4 * segment_height);
+    body.particles[Body_Tubeman_Segment_Left_5] = cf_v2(-half_width, 5 * segment_height);
+    body.particles[Body_Tubeman_Segment_Right_5] = cf_v2(half_width, 5 * segment_height);
+    
+    body.particles[Body_Tubeman_Left_Shoulder] = body.particles[Body_Tubeman_Segment_Left_3];
+    body.particles[Body_Tubeman_Right_Shoulder] = body.particles[Body_Tubeman_Segment_Right_3];
+    
+    body.particles[Body_Tubeman_Left_Elbow] = body.particles[Body_Tubeman_Left_Shoulder];
+    body.particles[Body_Tubeman_Left_Hand] = body.particles[Body_Tubeman_Left_Shoulder];
+    body.particles[Body_Tubeman_Left_Elbow].x -= arm_length * 0.5f;
+    body.particles[Body_Tubeman_Left_Hand].x -= arm_length;
+    
+    body.particles[Body_Tubeman_Right_Elbow] = body.particles[Body_Tubeman_Right_Shoulder];
+    body.particles[Body_Tubeman_Right_Hand] = body.particles[Body_Tubeman_Right_Shoulder];
+    body.particles[Body_Tubeman_Right_Elbow].x += arm_length * 0.5f;
+    body.particles[Body_Tubeman_Right_Hand].x += arm_length;
+    
+    f32 hair_cursor_x = -half_width + width / 3;
+    f32 hair_segment_height = height * 0.05f;
+    
+    body.particles[Body_Tubeman_Hair_0_0] = cf_v2(hair_cursor_x, 5 * segment_height);
+    body.particles[Body_Tubeman_Hair_0_1] = cf_v2(hair_cursor_x, 5 * segment_height);
+    body.particles[Body_Tubeman_Hair_0_2] = cf_v2(hair_cursor_x, 5 * segment_height);
+    body.particles[Body_Tubeman_Hair_0_1].y += hair_segment_height;
+    body.particles[Body_Tubeman_Hair_0_2].y += hair_segment_height * 2;
+    hair_cursor_x += width / 6;
+    
+    body.particles[Body_Tubeman_Hair_1_0] = cf_v2(hair_cursor_x, 5 * segment_height);
+    body.particles[Body_Tubeman_Hair_1_1] = cf_v2(hair_cursor_x, 5 * segment_height);
+    body.particles[Body_Tubeman_Hair_1_2] = cf_v2(hair_cursor_x, 5 * segment_height);
+    body.particles[Body_Tubeman_Hair_1_1].y += hair_segment_height;
+    body.particles[Body_Tubeman_Hair_1_2].y += hair_segment_height * 2;
+    hair_cursor_x += width / 6;
+    
+    body.particles[Body_Tubeman_Hair_2_0] = cf_v2(hair_cursor_x, 5 * segment_height);
+    body.particles[Body_Tubeman_Hair_2_1] = cf_v2(hair_cursor_x, 5 * segment_height);
+    body.particles[Body_Tubeman_Hair_2_2] = cf_v2(hair_cursor_x, 5 * segment_height);
+    body.particles[Body_Tubeman_Hair_2_1].y += hair_segment_height;
+    body.particles[Body_Tubeman_Hair_2_2].y += hair_segment_height * 2;
+    
+    CF_MEMCPY(body.prev_particles, body.particles, sizeof(*body.particles) * cf_array_count(body.particles));
+    
+    Particle_Constraint constraint = { 0 };
+    constraint.stiffness = 0.1f;
+    // segments
+    {
+        constraint.a = Body_Tubeman_Segment_Left_0;
+        constraint.b = Body_Tubeman_Segment_Right_0;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Left_0;
+        constraint.b = Body_Tubeman_Segment_Left_1;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Right_0;
+        constraint.b = Body_Tubeman_Segment_Right_1;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+    }
+    {
+        constraint.a = Body_Tubeman_Segment_Left_1;
+        constraint.b = Body_Tubeman_Segment_Right_1;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Left_1;
+        constraint.b = Body_Tubeman_Segment_Left_2;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Right_1;
+        constraint.b = Body_Tubeman_Segment_Right_2;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+    }
+    {
+        constraint.a = Body_Tubeman_Segment_Left_2;
+        constraint.b = Body_Tubeman_Segment_Right_2;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Left_2;
+        constraint.b = Body_Tubeman_Segment_Left_3;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Right_2;
+        constraint.b = Body_Tubeman_Segment_Right_3;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+    }
+    {
+        constraint.a = Body_Tubeman_Segment_Left_3;
+        constraint.b = Body_Tubeman_Segment_Right_3;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Left_3;
+        constraint.b = Body_Tubeman_Segment_Left_4;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Right_3;
+        constraint.b = Body_Tubeman_Segment_Right_4;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+    }
+    {
+        constraint.a = Body_Tubeman_Segment_Left_4;
+        constraint.b = Body_Tubeman_Segment_Right_4;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Left_4;
+        constraint.b = Body_Tubeman_Segment_Left_5;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Right_4;
+        constraint.b = Body_Tubeman_Segment_Right_5;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+    }
+    {
+        constraint.a = Body_Tubeman_Segment_Left_5;
+        constraint.b = Body_Tubeman_Segment_Right_5;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+    }
+    
+    // spine
+    {
+        constraint.a = Body_Tubeman_Segment_Left_0;
+        constraint.b = Body_Tubeman_Segment_Right_1;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Right_0;
+        constraint.b = Body_Tubeman_Segment_Left_1;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Left_1;
+        constraint.b = Body_Tubeman_Segment_Right_2;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Right_1;
+        constraint.b = Body_Tubeman_Segment_Left_2;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Left_2;
+        constraint.b = Body_Tubeman_Segment_Right_3;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Right_2;
+        constraint.b = Body_Tubeman_Segment_Left_3;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Left_3;
+        constraint.b = Body_Tubeman_Segment_Right_4;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Right_3;
+        constraint.b = Body_Tubeman_Segment_Left_4;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Left_4;
+        constraint.b = Body_Tubeman_Segment_Right_5;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Segment_Right_4;
+        constraint.b = Body_Tubeman_Segment_Left_5;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+    }
+    
+    constraint.stiffness = 1.0f;
+    // hair left
+    {
+        constraint.a = Body_Tubeman_Hair_0_0;
+        constraint.b = Body_Tubeman_Hair_0_1;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Hair_0_1;
+        constraint.b = Body_Tubeman_Hair_0_2;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+    }
+    // hair middle
+    {
+        constraint.a = Body_Tubeman_Hair_1_0;
+        constraint.b = Body_Tubeman_Hair_1_1;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Hair_1_1;
+        constraint.b = Body_Tubeman_Hair_1_2;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+    }
+    // hair right
+    {
+        constraint.a = Body_Tubeman_Hair_2_0;
+        constraint.b = Body_Tubeman_Hair_2_1;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Hair_2_1;
+        constraint.b = Body_Tubeman_Hair_2_2;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+    }
+    // scalp
+    {
+        constraint.a = Body_Tubeman_Segment_Left_5;
+        constraint.b = Body_Tubeman_Hair_0_0;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Hair_0_0;
+        constraint.b = Body_Tubeman_Hair_1_0;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Hair_1_0;
+        constraint.b = Body_Tubeman_Hair_2_0;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Hair_2_0;
+        constraint.b = Body_Tubeman_Segment_Right_5;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+    }
+    
+    // shoulder sockets
+    {
+        constraint.a = Body_Tubeman_Left_Shoulder;
+        constraint.b = Body_Tubeman_Segment_Left_3;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Right_Shoulder;
+        constraint.b = Body_Tubeman_Segment_Right_3;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+    }
+    
+    // left arm
+    {
+        constraint.a = Body_Tubeman_Left_Shoulder;
+        constraint.b = Body_Tubeman_Left_Elbow;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Left_Elbow;
+        constraint.b = Body_Tubeman_Left_Hand;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+    }
+    // right arm
+    {
+        constraint.a = Body_Tubeman_Right_Shoulder;
+        constraint.b = Body_Tubeman_Right_Elbow;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+        
+        constraint.a = Body_Tubeman_Right_Elbow;
+        constraint.b = Body_Tubeman_Right_Hand;
+        constraint.base_length = cf_distance(body.particles[constraint.a], body.particles[constraint.b]);
+        constraint.length = constraint.base_length;
+        cf_array_push(body.constraints, constraint);
+    }
+    
+    return body;
+}
+
+void body_tubeman_stabilize(Body* body)
+{
+    f32 gravity = -400.0f;
+    
+    for (s32 index = 0; index < Body_Tubeman_Left_Elbow / 2; ++index)
+    {
+        s32 left_index = index;
+        s32 right_index = index + 1;
+        CF_V2 left = body->particles[left_index];
+        CF_V2 right = body->particles[right_index];
+        
+        CF_V2 dp = cf_sub(left, right);
+        
+        body->accelerations[left_index] = cf_add(body->accelerations[left_index], dp);
+        body->accelerations[right_index] = cf_sub(body->accelerations[right_index], dp);
+    }
+    
+    for (s32 index = 0; index < Body_Tubeman_Left_Elbow; ++index)
+    {
+        body->accelerations[index].y += gravity;
+    }
+}
+
+void body_tubeman_draw(Body* body, Body_Proportions proportions)
+{
+    f32 chubbiness = 5.0f * proportions.torso_chubbiness;
+    
+    f32 upper_arm_thickness = body->height * 0.10f * proportions.upper_arm_thickness;
+    f32 lower_arm_thickness = body->height * 0.06f * proportions.lower_arm_thickness;
+    f32 hand_thickness = body->height * 0.045f * proportions.hand_thickness;
+    f32 hair_thickness = body->height * 0.01f;
+    
+    s32 iterations = 16;
+    
+    CF_Color start_color = cf_draw_peek_color();
+    CF_Color end_color = cf_color_black();
+    end_color.a = start_color.a * 0.5f;
+    
+    CF_Color upper_color = cf_color_lerp(start_color, end_color, 0.025f);
+    CF_Color lower_color = cf_color_lerp(start_color, end_color, 0.05f);
+    
+    CF_Poly chunk = { 0 };
+    
+    cf_draw_line(body->particles[Body_Tubeman_Hair_0_0], body->particles[Body_Tubeman_Hair_0_1], hair_thickness);
+    cf_draw_line(body->particles[Body_Tubeman_Hair_0_1], body->particles[Body_Tubeman_Hair_0_2], hair_thickness);
+    
+    cf_draw_line(body->particles[Body_Tubeman_Hair_1_0], body->particles[Body_Tubeman_Hair_1_1], hair_thickness);
+    cf_draw_line(body->particles[Body_Tubeman_Hair_1_1], body->particles[Body_Tubeman_Hair_1_2], hair_thickness);
+    
+    cf_draw_line(body->particles[Body_Tubeman_Hair_2_0], body->particles[Body_Tubeman_Hair_2_1], hair_thickness);
+    cf_draw_line(body->particles[Body_Tubeman_Hair_2_1], body->particles[Body_Tubeman_Hair_2_2], hair_thickness);
+    
+    // first chunk
+    chunk.count = 4;
+    chunk.verts[0] = body->particles[Body_Tubeman_Segment_Left_0];
+    chunk.verts[1] = body->particles[Body_Tubeman_Segment_Right_0];
+    chunk.verts[2] = body->particles[Body_Tubeman_Segment_Right_1];
+    chunk.verts[3] = body->particles[Body_Tubeman_Segment_Left_1];
+    cf_make_poly(&chunk);
+    body_draw_polygon_fill(chunk, chubbiness);
+    
+    // second chunk
+    chunk.count = 4;
+    chunk.verts[0] = body->particles[Body_Tubeman_Segment_Left_1];
+    chunk.verts[1] = body->particles[Body_Tubeman_Segment_Right_1];
+    chunk.verts[2] = body->particles[Body_Tubeman_Segment_Right_2];
+    chunk.verts[3] = body->particles[Body_Tubeman_Segment_Left_2];
+    cf_make_poly(&chunk);
+    body_draw_polygon_fill(chunk, chubbiness);
+    
+    // third chunk
+    chunk.count = 4;
+    chunk.verts[0] = body->particles[Body_Tubeman_Segment_Left_2];
+    chunk.verts[1] = body->particles[Body_Tubeman_Segment_Right_2];
+    chunk.verts[2] = body->particles[Body_Tubeman_Segment_Right_3];
+    chunk.verts[3] = body->particles[Body_Tubeman_Segment_Left_3];
+    cf_make_poly(&chunk);
+    body_draw_polygon_fill(chunk, chubbiness);
+    
+    // fourth chunk
+    chunk.count = 4;
+    chunk.verts[0] = body->particles[Body_Tubeman_Segment_Left_3];
+    chunk.verts[1] = body->particles[Body_Tubeman_Segment_Right_3];
+    chunk.verts[2] = body->particles[Body_Tubeman_Segment_Right_4];
+    chunk.verts[3] = body->particles[Body_Tubeman_Segment_Left_4];
+    cf_make_poly(&chunk);
+    body_draw_polygon_fill(chunk, chubbiness);
+    
+    // fifth chunk
+    chunk.count = 4;
+    chunk.verts[0] = body->particles[Body_Tubeman_Segment_Left_4];
+    chunk.verts[1] = body->particles[Body_Tubeman_Segment_Right_4];
+    chunk.verts[2] = body->particles[Body_Tubeman_Segment_Right_5];
+    chunk.verts[3] = body->particles[Body_Tubeman_Segment_Left_5];
+    cf_make_poly(&chunk);
+    body_draw_polygon_fill(chunk, chubbiness);
+    
+    cf_draw_push_color(lower_color);
+    body_draw_line(body->particles[Body_Tubeman_Left_Elbow], body->particles[Body_Tubeman_Left_Hand], lower_arm_thickness, hand_thickness, iterations);
+    body_draw_line(body->particles[Body_Tubeman_Right_Elbow], body->particles[Body_Tubeman_Right_Hand], lower_arm_thickness, hand_thickness, iterations);
+    cf_draw_pop_color();
+    
+    cf_draw_push_color(upper_color);
+    body_draw_line(body->particles[Body_Tubeman_Left_Shoulder], body->particles[Body_Tubeman_Left_Elbow], upper_arm_thickness, lower_arm_thickness, iterations);
+    body_draw_line(body->particles[Body_Tubeman_Right_Shoulder], body->particles[Body_Tubeman_Right_Elbow], upper_arm_thickness, lower_arm_thickness, iterations);
+    cf_draw_pop_color();
+}
+
+void body_tubeman_sway(Body* body, CF_V2 force)
+{
+    for (s32 index = 0; index < Body_Tubeman_Left_Elbow; ++index)
+    {
+        body->accelerations[index] = cf_add(body->accelerations[index], force);
+    }
+    
+    s32 hair_indices[] =
+    {
+        Body_Tubeman_Hair_0_2,
+        Body_Tubeman_Hair_1_2,
+        Body_Tubeman_Hair_2_2,
+    };
+    
+    for (s32 index = 0; index < CF_ARRAY_SIZE(hair_indices); ++index)
+    {
+        body->accelerations[index] = cf_add(body->accelerations[index], force);
+    }
+}
+
+void body_tubeman_punch_co(CF_Coroutine co)
+{
+    Body* body = (Body*)cf_coroutine_get_udata(co);
+    World* world = &s_app->world;
+    
+    s32 hand_index = Body_Tubeman_Left_Hand;
+    s32 elbow_index = Body_Tubeman_Left_Elbow;
+    s32 shoulder_index = Body_Tubeman_Left_Shoulder;
+    if (body->facing_direction < 0)
+    {
+        hand_index = Body_Tubeman_Right_Hand;
+        elbow_index = Body_Tubeman_Right_Hand;
+        shoulder_index = Body_Tubeman_Right_Shoulder;
+    }
+    
+    CF_V2 centeroid = body_centeroid(body);
+    CF_V2 old_hand_position = body->particles[hand_index];
+    CF_V2 hit_target = cf_v2(centeroid.x + body->facing_direction * body->height * 3, old_hand_position.y);
+    
+    if (cf_coroutine_bytes_pushed(co) >= sizeof(Body))
+    {
+        Body target_body;
+        if (cf_coroutine_pop(co, &target_body, sizeof(Body)).code == CF_RESULT_SUCCESS)
+        {
+            CF_V2 p0 = cf_v2(body->particles[hand_index].x, body->particles[shoulder_index].y);
+            CF_V2 p1 = cf_v2(p0.x + body->facing_direction * body->height * 2.0f, p0.y);
+            
+            CF_V2 target_centroid = body_centeroid(&target_body);
+            CF_V2 hit_direction = cf_sub(target_centroid, p0);
+            hit_direction = cf_safe_norm(hit_direction);
+            p1 = cf_add(p0, cf_mul_v2_f(hit_direction, body->height * 2.0f));
+            
+            hit_target = body_human_get_punch_target(body, &target_body);
+        }
+    }
+    else
+    {
+        hit_target = body_human_get_punch_target(body, NULL);
+    }
+    
+    CF_V2 c0 = cf_v2(centeroid.x - body->facing_direction * body->height, old_hand_position.y);
+    CF_V2 c1 = hit_target;
+    CF_V2 c2 = old_hand_position;
+    
+    cf_array_clear(body->hurt_particles);
+    cf_array_push(body->hurt_particles, hand_index);
+    cf_array_push(body->hurt_particles, elbow_index);
+    cf_array_push(body->hurt_particles, shoulder_index);
+    
+    f32 duration = 1.0f;
+    f32 delay = 0.0f;
+    while (delay < duration)
+    {
+        f32 t = cf_clamp01(delay / duration);
+        t = cf_circle_in_out(t);
+        
+        CF_V2 hand_target = cf_bezier(c0, c1, c2, t);
+        
+        body->particles[hand_index] = cf_lerp(body->particles[hand_index], hand_target, t);
+        delay += world->dt;
+        cf_coroutine_yield(co);
+    }
+    
+    cf_array_clear(body->hurt_particles);
+}
+
+void body_tubeman_pull_co(CF_Coroutine co)
+{
+    Body* body = (Body*)cf_coroutine_get_udata(co);
+    World* world = &s_app->world;
+    
+    ecs_entity_t victim = (ecs_entity_t){ -1 };
+    
+    if (cf_coroutine_bytes_pushed(co) >= sizeof(victim))
+    {
+        if (cf_coroutine_pop(co, &victim, sizeof(victim)).code != CF_RESULT_SUCCESS)
+        {
+            return;
+        }
+    }
+    
+    s32 hand_index = Body_Tubeman_Left_Hand;
+    s32 elbow_index = Body_Tubeman_Left_Elbow;
+    s32 shoulder_index = Body_Tubeman_Left_Shoulder;
+    if (body->facing_direction < 0)
+    {
+        hand_index = Body_Tubeman_Right_Hand;
+        elbow_index = Body_Tubeman_Right_Hand;
+        shoulder_index = Body_Tubeman_Right_Shoulder;
+    }
+    
+    f32 forearm_constraint_stiffness = 1.0f;
+    s32 forearm_constraint_index = 0;
+    for (s32 index = 0; index < cf_array_count(body->constraints); ++index)
+    {
+        Particle_Constraint constraint = body->constraints[index];
+        if ((constraint.a == hand_index || constraint.a == hand_index) && 
+            (constraint.a == elbow_index || constraint.a == elbow_index))
+        {
+            forearm_constraint_index = index;
+            forearm_constraint_stiffness = constraint.stiffness;
+            break;
+        }
+    }
+    
+    // spinning hand charge
+    f32 charge_radius = body->height * 0.25f;
+    CF_V2 charge_position = body->particles[shoulder_index];
+    charge_position.x -= body->facing_direction * body->height * 0.5f;
+    
+    f32 duration = 2.0f;
+    f32 delay = 0.0f;
+    while (delay < duration && is_entity_alive(victim))
+    {
+        f32 angle = delay * CF_TAU * 5.0f;
+        CF_V2 offset = cf_v2(charge_radius * cf_cos(angle), charge_radius * cf_sin(angle));
+        
+        body->particles[hand_index] = cf_add(charge_position, offset);
+        
+        delay += world->dt;
+        cf_coroutine_yield(co);
+    }
+    
+    // need to check if victim is valid in every call incase it gets destroyed at any point
+    if (!is_entity_alive(victim))
+    {
+        return;
+    }
+    
+    C_Puppet* victim_puppet = ECS_GET(victim, C_Puppet);
+    CF_V2* target_position = &victim_puppet->body.position;
+    
+    CF_V2 direction = cf_sub(*target_position, body->particles[shoulder_index]);
+    direction = cf_safe_norm(direction);
+    CF_V2 c0 = body->particles[hand_index];
+    CF_V2 c1 = cf_add(body->particles[shoulder_index], cf_mul_v2_f(direction, body->height));
+    
+    // throw arm forward
+    duration = 1.0f;
+    delay = 0.0f;
+    while (delay < duration && is_entity_alive(victim))
+    {
+        f32 t = cf_quint_in_out(cf_clamp01(delay / duration));
+        body->particles[hand_index] = cf_lerp(c0, *target_position, t);
+        
+        // allow forearm stretch
+        f32 distance = cf_distance(body->particles[hand_index], body->particles[elbow_index]);
+        if (distance > body->constraints[forearm_constraint_index].length)
+        {
+            body->constraints[forearm_constraint_index].stiffness = 0.0f;
+        }
+        
+        delay += world->dt;
+        cf_coroutine_yield(co);
+    }
+    
+    c0 = body->particles[hand_index];
+    c1 = body->position;
+    
+    // pull back hand
+    duration = 1.0f;
+    delay = 0.0f;
+    while (delay < duration && is_entity_alive(victim))
+    {
+        f32 t = cf_quint_in(cf_clamp01(delay / duration));
+        body->particles[hand_index] = cf_lerp(c0, c1, t);
+        
+        // disable forearm stretch to have some momentum body swing
+        f32 distance = cf_distance(body->particles[hand_index], body->particles[elbow_index]);
+        if (distance <= body->constraints[forearm_constraint_index].length)
+        {
+            body->constraints[forearm_constraint_index].stiffness = forearm_constraint_stiffness;
+        }
+        
+        body_teleport(&victim_puppet->body, body->particles[hand_index]);
+        
+        delay += world->dt;
+        cf_coroutine_yield(co);
+    }
+    
+    // disable forearm stretch
+    body->constraints[forearm_constraint_index].stiffness = forearm_constraint_stiffness;
+}
+
+// @tubeman
+
 // utils
+
+// body can be squished so try to at least still draw something
+void body_draw_polygon_fill(CF_Poly poly, f32 chubbiness)
+{
+    if (poly.count > 2)
+    {
+        cf_draw_polygon_fill(poly.verts, poly.count, chubbiness);
+    }
+    else if (poly.count == 2)
+    {
+        cf_draw_line(poly.verts[0], poly.verts[1], chubbiness);
+    }
+    else
+    {
+        cf_draw_circle_fill2(poly.verts[0], chubbiness);
+    }
+}
+
 void body_draw_line(CF_V2 p0, CF_V2 p1, f32 p0_thickness, f32 p1_thickness, s32 iterations)
 {
     CF_V2 direction = cf_sub(p1, p0);
@@ -2083,6 +2928,7 @@ CF_Sprite get_body_sprite(Body_Type type)
             sprite.blend_index = ASSETS_BLEND_LAYER_DEFAULT;
             break;
         }
+        case Body_Type_Tubeman:
         case Body_Type_Human:
         default:
         {

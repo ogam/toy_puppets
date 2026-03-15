@@ -100,6 +100,7 @@ dyna Condition_Effect* get_condition_effects(Condition condition);
 s32 condition_update(Condition condition, f32 dt);
 
 void destroy_condition(Condition condition);
+b32 has_condition_effect(Condition condition, Condition_Effect_Type type);
 b32 can_add_condition_effect(Condition condition, Condition_Effect_Type type);
 b32 add_condition_effect(Condition condition, Condition_Effect_Type type);
 b32 remove_condition_effect(Condition condition, Condition_Effect_Type type);

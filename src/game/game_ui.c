@@ -970,6 +970,7 @@ void game_ui_do_creature_hud()
             Body_Type_Human,
             Body_Type_Tentacle,
             Body_Type_Slime,
+            Body_Type_Tubeman,
         };
         
         CF_Aabb layout_aabb = cf_make_aabb_from_top_left(cf_v2(0, UI_HEIGHT), UI_WIDTH * 0.5f, UI_HEIGHT * 0.2f);
@@ -1117,10 +1118,12 @@ void game_ui_do_arena_result()
         Body_Type_Human,
         Body_Type_Tentacle,
         Body_Type_Slime,
+        Body_Type_Tubeman,
     };
     
     s32 body_counts[] = 
     {
+        0,
         0,
         0,
         0,
@@ -1372,13 +1375,6 @@ void game_ui_do_shop()
     World* world = &s_app->world;
     Overworld_Shop* shop =  &s_app->overworld.shop;
     Inventory* inventory = &world->inventory;
-    
-    Body_Type body_types[] = 
-    {
-        Body_Type_Human,
-        Body_Type_Tentacle,
-        Body_Type_Slime,
-    };
     
     {
         ui_push_layout_border_color(cf_color_white());

@@ -143,7 +143,7 @@ Spell_Data get_spell_data(Spell_Type spell_type)
         case Spell_Type_Death:
         {
             spell.size = cf_v2(50.0f, 30.0f);
-            spell.target_type = Cast_Target_Type_Enemies;
+            spell.target_type = Cast_Target_Type_All;
             cf_array_push(spell.effects, Condition_Effect_Type_Death);
             break;
         }

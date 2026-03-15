@@ -34,7 +34,7 @@ int main(int argc, char **argv)
     cf_app_set_vsync(true);
     
     init_profiler(64);
-    profile_file_stream_begin("trace.json");
+    //profile_file_stream_begin("trace.json");
     
     init();
     
@@ -47,7 +47,7 @@ int main(int argc, char **argv)
         cf_app_draw_onto_screen(false);
     }
     
-    profile_file_stream_end();
+    //profile_file_stream_end();
     
     cf_destroy_app();
     

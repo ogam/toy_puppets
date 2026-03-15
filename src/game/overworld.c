@@ -180,6 +180,8 @@ void overworld_generate()
             {
                 room->type = cf_rnd_range_int(rnd, Overworld_Room_Type_Normal, Overworld_Room_Type_Shop);
             }
+            
+            room->type = Overworld_Room_Type_Shop;
         }
         
         cf_array_last(rooms).type = Overworld_Room_Type_Boss;
@@ -254,7 +256,7 @@ void overworld_generate_shop(s32 depth, u64 seed)
     
     for (s32 index = 0; index < body_count; ++index)
     {
-        Body_Type type = cf_rnd_range_int(&rnd, Body_Type_Human, Body_Type_Slime);
+        Body_Type type = cf_rnd_range_int(&rnd, Body_Type_Human, Body_Type_Tubeman);
         s32 attempts = 5;
         while (overworld_shop_get_body_cost(type) > cost_limit && attempts > 0)
         {
@@ -332,6 +334,11 @@ s32 overworld_shop_get_body_cost(Body_Type type)
         case Body_Type_Slime:
         {
             gold = 8;
+            break;
+        }
+        case Body_Type_Tubeman:
+        {
+            gold = 15;
             break;
         }
     }
