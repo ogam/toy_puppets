@@ -181,7 +181,6 @@ void overworld_generate()
                 room->type = cf_rnd_range_int(rnd, Overworld_Room_Type_Normal, Overworld_Room_Type_Shop);
             }
             
-            room->type = Overworld_Room_Type_Shop;
         }
         
         cf_array_last(rooms).type = Overworld_Room_Type_Boss;
