@@ -47,7 +47,6 @@ void animation_human_body_update()
             if (COROUTINE_IS_DONE(s_animation_tool.action_co))
             {
                 co_fn = body_human_punch_co;
-                
             }
         }
         
@@ -80,7 +79,7 @@ void animation_human_body_update()
         ImGui_Separator();
         ImGui_SliderFloat("Head Scale", &proportions->head_scale, 0.1f, 2.0f);
         ImGui_SliderFloat("Neck Thickness", &proportions->neck_thickness, 0.1f, 2.0f);
-        ImGui_SliderFloat("Torso Chubiness", &proportions->torso_chubiness, 0.1f, 2.0f);
+        ImGui_SliderFloat("Torso Chubbiness", &proportions->torso_chubbiness, 0.1f, 2.0f);
         ImGui_SliderFloat("Upper Arm Thickness", &proportions->upper_arm_thickness, 0.1f, 2.0f);
         ImGui_SliderFloat("Lower Arm Thickness", &proportions->lower_arm_thickness, 0.1f, 2.0f);
         ImGui_SliderFloat("Hand Thickness", &proportions->hand_thickness, 0.1f, 2.0f);
@@ -93,7 +92,7 @@ void animation_human_body_update()
             const char* text = scratch_fmt("proportions.scale = %.3ff;\n" \
                                            "proportions.head_scale = %.3ff;\n" \
                                            "proportions.neck_thickness = %.3ff;\n" \
-                                           "proportions.torso_chubiness = %.3ff;\n" \
+                                           "proportions.torso_chubbiness = %.3ff;\n" \
                                            "proportions.upper_arm_thickness = %.3ff;\n" \
                                            "proportions.lower_arm_thickness = %.3ff;\n" \
                                            "proportions.hand_thickness = %.3ff;\n" \
@@ -108,7 +107,7 @@ void animation_human_body_update()
                                            proportions->scale,
                                            proportions->head_scale,
                                            proportions->neck_thickness,
-                                           proportions->torso_chubiness,
+                                           proportions->torso_chubbiness,
                                            proportions->upper_arm_thickness,
                                            proportions->lower_arm_thickness,
                                            proportions->hand_thickness,
@@ -275,6 +274,56 @@ void animation_hand_body_update()
     }
 }
 
+void animation_tubeman_body_update()
+{
+    static f32 blow_turn_rate = 1.0f;
+    static f32 blow_force_x = 50.0f;
+    static f32 blow_force_y = 150.0f;
+    static f32 blow_duration = 0.0f;
+    
+    Body* body = &s_animation_tool.body;
+    
+    ImGui_Begin("Animation", 0, 0);
+    {
+        if (ImGui_Button("Blow"))
+        {
+            blow_duration = 15.0f;
+        }
+        ImGui_SameLine();
+        if (ImGui_Button("Punch"))
+        {
+            if (COROUTINE_IS_DONE(s_animation_tool.action_co))
+            {
+                cf_destroy_coroutine(s_animation_tool.action_co);
+                s_animation_tool.action_co = cf_make_coroutine(body_tubeman_punch_co, 0, body);
+            }
+        }
+        
+        ImGui_SliderFloat("Blow Turn Rate", &blow_turn_rate, 0.0f, 100.0f);
+        ImGui_SliderFloat("Blow Force X", &blow_force_x, 0.0f, 5000.0f);
+        ImGui_SliderFloat("Blow Force Y", &blow_force_y, 0.0f, 5000.0f);
+        
+        if (blow_duration > 0)
+        {
+            ImGui_Text("Blow Time Remaining %.2f", blow_duration);
+        }
+    }
+    ImGui_End();
+    
+    body->is_locked[Body_Tubeman_Segment_Left_0] = true;
+    body->is_locked[Body_Tubeman_Segment_Right_0] = true;
+    
+    if (blow_duration > 0)
+    {
+        f32 accel_x = cf_sin((f32)CF_SECONDS * blow_turn_rate) > 0.0f ? blow_force_x : 0.0f;
+        CF_V2 force = cf_v2(accel_x, blow_force_y);
+        
+        body_tubeman_sway(body, force);
+        
+        blow_duration = cf_max(blow_duration - CF_DELTA_TIME, 0.0f);
+    }
+}
+
 void animation_body_update()
 {
     Body* body = &s_animation_tool.body;
@@ -299,6 +348,11 @@ void animation_body_update()
         case Body_Type_Hand:
         {
             animation_hand_body_update();
+            break;
+        }
+        case Body_Type_Tubeman:
+        {
+            animation_tubeman_body_update();
             break;
         }
     }
@@ -331,6 +385,11 @@ void animation_tool_reset()
         case Body_Type_Hand:
         {
             s_animation_tool.body = make_hand_body(HAND_HEIGHT);
+            break;
+        }
+        case Body_Type_Tubeman:
+        {
+            s_animation_tool.body = make_tubeman_body(TUBEMAN_HEIGHT);
             break;
         }
         default:

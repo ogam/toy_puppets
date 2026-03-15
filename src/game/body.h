@@ -13,6 +13,7 @@ typedef s32 Body_Type;
 ENUM(PREFIX, Human) \
 ENUM(PREFIX, Tentacle) \
 ENUM(PREFIX, Slime) \
+ENUM(PREFIX, Tubeman) \
 ENUM(PREFIX, Hand) \
 ENUM(PREFIX, Count)
 
@@ -58,7 +59,7 @@ typedef struct Body_Proportions
     // human
     f32 head_scale;
     f32 neck_thickness;
-    f32 torso_chubiness;
+    f32 torso_chubbiness;
     
     f32 upper_arm_thickness;
     f32 lower_arm_thickness;
@@ -81,6 +82,8 @@ Body_Proportions make_random_body_proportions();
 Body make_default_body(Body_Type type, s32 particle_count, f32 height);
 void destroy_body(Body* body);
 void body_scale(Body* body, Body_Proportions proportions);
+void body_shatter(Body* body);
+void body_apply_friction(Body* body);
 
 void body_acceleration_reset(Body* body);
 void body_verlet(Body* body);
@@ -98,6 +101,7 @@ s32 body_particles_touching_ground(Body* body);
 CF_Aabb body_get_bounds(Body* body);
 CF_Aabb body_get_particle_bounds(Body* body, s32* particles, s32 count);
 
+void body_apply_force(Body* body, CF_V2 force);
 void body_teleport(Body* body, CF_V2 position);
 
 // @human
@@ -119,6 +123,11 @@ enum
     Body_Human_Left_Foot,
     Body_Human_Right_Knee,
     Body_Human_Right_Foot,
+    Body_Human_Left_Shoulder_Socket,
+    Body_Human_Right_Shoulder_Socket,
+    Body_Human_Left_Hip_Socket,
+    Body_Human_Right_Hip_Socket,
+    Body_Human_Neck_Socket,
     Body_Human_Count,
 };
 
@@ -221,7 +230,54 @@ void body_hand_cast(Body* body);
 
 // @hand
 
+// @tubeman
+
+typedef s32 Body_Tubeman;
+enum
+{
+    Body_Tubeman_Segment_Left_0,
+    Body_Tubeman_Segment_Right_0,
+    Body_Tubeman_Segment_Left_1,
+    Body_Tubeman_Segment_Right_1,
+    Body_Tubeman_Segment_Left_2,
+    Body_Tubeman_Segment_Right_2,
+    Body_Tubeman_Segment_Left_3,
+    Body_Tubeman_Segment_Right_3,
+    Body_Tubeman_Segment_Left_4,
+    Body_Tubeman_Segment_Right_4,
+    Body_Tubeman_Segment_Left_5,
+    Body_Tubeman_Segment_Right_5,
+    Body_Tubeman_Left_Shoulder,
+    Body_Tubeman_Right_Shoulder,
+    Body_Tubeman_Left_Elbow,
+    Body_Tubeman_Left_Hand,
+    Body_Tubeman_Right_Elbow,
+    Body_Tubeman_Right_Hand,
+    Body_Tubeman_Hair_0_0,
+    Body_Tubeman_Hair_0_1,
+    Body_Tubeman_Hair_0_2,
+    Body_Tubeman_Hair_1_0,
+    Body_Tubeman_Hair_1_1,
+    Body_Tubeman_Hair_1_2,
+    Body_Tubeman_Hair_2_0,
+    Body_Tubeman_Hair_2_1,
+    Body_Tubeman_Hair_2_2,
+    Body_Tubeman_Count,
+};
+
+Body make_tubeman_body(f32 height);
+void body_tubeman_stabilize(Body* body);
+
+void body_tubeman_draw(Body* body, Body_Proportions proportions);
+void body_tubeman_sway(Body* body, CF_V2 force);
+
+void body_tubeman_punch_co(CF_Coroutine co);
+void body_tubeman_pull_co(CF_Coroutine co);
+
+// @tubeman
+
 // utils
+void body_draw_polygon_fill(CF_Poly poly, f32 chubbiness);
 void body_draw_line(CF_V2 p0, CF_V2 p1, f32 p0_thickness, f32 p1_thickness, s32 iterations);
 void body_slap(Body* body, CF_V2 force);
 

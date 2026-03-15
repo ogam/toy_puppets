@@ -174,13 +174,23 @@ const char* ENUM_NAME##_names[] = { ENUM_NAME(ENUM_NAME, ENUM_STRING) };
 #define HAND_HEIGHT 128.0f
 #endif
 
+#ifndef TUBEMAN_HEIGHT
+#define TUBEMAN_HEIGHT 288.0f
+#endif
+
 #ifndef TOY_SWAP
-#define TOY_SWAP(T, A, B) { T temp = A; A = B; B = A; }
+#define TOY_SWAP(A, B) { typeof(A) temp = A; A = B; B = temp; }
 #endif
 
 #ifndef TOY_PLAYER_INDEX
 #define TOY_PLAYER_INDEX 1ULL
 #endif
+
+
+#ifndef TOY_SLAP_INDEX
+#define TOY_SLAP_INDEX 5ULL
+#endif
+
 
 #ifndef TOY_INVENTORY_INFINITE_QTY
 #define TOY_INVENTORY_INFINITE_QTY 999

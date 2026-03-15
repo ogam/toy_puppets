@@ -225,68 +225,57 @@ void ui_draw_layout(UI_Layout* layout)
     {
         UI_Item* item = layout->items + index;
         
-        CF_Aabb current_scissor = cf_expand_aabb_f(scissor, item->font_size);
-        
-        if (!BIT_IS_SET(item->state, UI_Item_State_Visible))
-        {
-            continue;
-        }
-        
         if (BIT_IS_SET(item->state, UI_Item_State_Ignore_Scissor))
         {
             push_scissor(screen_scissor);
-            current_scissor = screen_scissor;
         }
         
-        if (cf_overlaps(item->aabb, current_scissor))
+        if (item->custom_draw)
         {
-            if (item->custom_draw)
+            item->custom_draw(layout, item);
+        }
+        else
+        {
+            // draw normal boxes and text
+            if (item->background_color.a > 0)
             {
-                item->custom_draw(layout, item);
+                cf_draw_push_color(item->background_color);
+                cf_draw_box_fill(item->aabb, item->corner_radius);
+                cf_draw_pop_color();
             }
-            else
+            
+            if (item->border_color.a > 0)
             {
-                // draw normal boxes and text
-                if (item->background_color.a > 0)
+                cf_draw_push_color(item->border_color);
+                cf_draw_box(item->aabb, item->border_thickness, item->corner_radius);
+                cf_draw_pop_color();
+            }
+            
+            if (item->text)
+            {
+                if (item->word_wrap)
                 {
-                    cf_draw_push_color(item->background_color);
-                    cf_draw_box_fill(item->aabb, item->corner_radius);
-                    cf_draw_pop_color();
+                    cf_push_text_wrap_width(cf_extents(layout->usable_aabb).x);
                 }
                 
-                if (item->border_color.a > 0)
-                {
-                    cf_draw_push_color(item->border_color);
-                    cf_draw_box(item->aabb, item->border_thickness, item->corner_radius);
-                    cf_draw_pop_color();
-                }
+                CF_V2 top_left = cf_top_left(item->text_aabb);
+                CF_V2 shadow_top_left = cf_add(top_left, cf_v2(1, -1));
                 
-                if (item->text)
+                cf_push_font_size(item->font_size);
+                
+                cf_draw_push_color(item->text_shadow_color);
+                cf_draw_text(cf_text_without_markups(item->text), shadow_top_left, -1);
+                cf_draw_pop_color();
+                
+                cf_draw_push_color(item->text_color);
+                cf_draw_text(item->text, top_left, -1);
+                cf_draw_pop_color();
+                
+                cf_pop_font_size();
+                
+                if (item->word_wrap)
                 {
-                    if (item->word_wrap)
-                    {
-                        cf_push_text_wrap_width(cf_extents(layout->usable_aabb).x);
-                    }
-                    
-                    CF_V2 top_left = cf_top_left(item->text_aabb);
-                    CF_V2 shadow_top_left = cf_add(top_left, cf_v2(1, -1));
-                    
-                    cf_push_font_size(item->font_size);
-                    
-                    cf_draw_push_color(item->text_shadow_color);
-                    cf_draw_text(cf_text_without_markups(item->text), shadow_top_left, -1);
-                    cf_draw_pop_color();
-                    
-                    cf_draw_push_color(item->text_color);
-                    cf_draw_text(item->text, top_left, -1);
-                    cf_draw_pop_color();
-                    
-                    cf_pop_font_size();
-                    
-                    if (item->word_wrap)
-                    {
-                        cf_pop_text_wrap_width();
-                    }
+                    cf_pop_text_wrap_width();
                 }
             }
         }

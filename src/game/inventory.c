@@ -189,6 +189,7 @@ void inventory_randomize(Inventory* inventory, u64 seed)
     {
         Body_Type_Human,
         Body_Type_Slime,
+        Body_Type_Tubeman,
     };
     
     Body_Type spell_types[] = 

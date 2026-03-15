@@ -58,20 +58,25 @@ void destroy_condition(Condition condition)
     }
 }
 
-b32 can_add_condition_effect(Condition condition, Condition_Effect_Type type)
+b32 has_condition_effect(Condition condition, Condition_Effect_Type type)
 {
-    b32 can_add = true;
+    b32 found = false;
     dyna Condition_Effect* effects = get_condition_effects(condition);
     for (s32 index = 0; index < cf_array_count(effects); ++index)
     {
         if (effects[index].type == type)
         {
-            can_add = false;
+            found = true;
             break;
         }
     }
     
-    return can_add;
+    return found;
+}
+
+b32 can_add_condition_effect(Condition condition, Condition_Effect_Type type)
+{
+    return !has_condition_effect(condition, type);;
 }
 
 b32 add_condition_effect(Condition condition, Condition_Effect_Type type)
@@ -747,7 +752,7 @@ struct Body_Proportions get_condition_body_proportions(Condition_Effect_Type typ
         }
         case Condition_Effect_Type_HP_Up:
         {
-            proportions.torso_chubiness = 2.0f;
+            proportions.torso_chubbiness = 2.0f;
             break;
         }
         case Condition_Effect_Type_Str_Up:
@@ -762,7 +767,7 @@ struct Body_Proportions get_condition_body_proportions(Condition_Effect_Type typ
         }
         case Condition_Effect_Type_HP_Down:
         {
-            proportions.torso_chubiness = -0.5f;
+            proportions.torso_chubbiness = -0.5f;
             break;
         }
         case Condition_Effect_Type_Str_Down:

@@ -126,6 +126,12 @@ typedef struct C_AI_Conductor
 typedef u8 C_Human;
 typedef u8 C_Tentacle;
 typedef u8 C_Slime;
+typedef struct C_Tubeman
+{
+    f32 scale_target;
+    f32 scale_duration;
+    f32 scale_time;
+} C_Tubeman;
 
 typedef struct C_Team
 {
@@ -209,7 +215,7 @@ typedef struct Damage_Source
 typedef u8 C_Creature_Normal;
 typedef u8 C_Creature_Elite;
 typedef u8 C_Creature_Boss;
-typedef u8 C_Dead;
+typedef u8 C_Slappable;
 
 typedef s32 Event_Type;
 enum
@@ -330,6 +336,7 @@ typedef struct World
     CF_Rnd rnd;
     CF_Rnd name_rnd;
     
+    f32 time;
     f32 dt;
     f32 condition_dt;
     
@@ -385,6 +392,7 @@ ecs_ret_t system_update_healths(ecs_t* ecs, ecs_entity_t* entities, size_t entit
 
 ecs_ret_t system_update_creature_teams(ecs_t* ecs, ecs_entity_t* entities, size_t entity_count, void* udata);
 
+ecs_ret_t system_udpate_shattered_puppets(ecs_t* ecs, ecs_entity_t* entities, size_t entity_count, void* udata);
 ecs_ret_t system_update_puppet_animations(ecs_t* ecs, ecs_entity_t* entities, size_t entity_count, void* udata);
 
 ecs_ret_t system_update_prebuild_spatial_grid(ecs_t* ecs, ecs_entity_t* entities, size_t entity_count, void* udata);
@@ -395,6 +403,7 @@ ecs_ret_t system_update_hurt_boxes(ecs_t* ecs, ecs_entity_t* entities, size_t en
 ecs_ret_t system_update_ai_humans(ecs_t* ecs, ecs_entity_t* entities, size_t entity_count, void* udata);
 ecs_ret_t system_update_ai_tentacles(ecs_t* ecs, ecs_entity_t* entities, size_t entity_count, void* udata);
 ecs_ret_t system_update_ai_slimes(ecs_t* ecs, ecs_entity_t* entities, size_t entity_count, void* udata);
+ecs_ret_t system_update_ai_tubemans(ecs_t* ecs, ecs_entity_t* entities, size_t entity_count, void* udata);
 
 ecs_ret_t system_update_movements(ecs_t* ecs, ecs_entity_t* entities, size_t entity_count, void* udata);
 
@@ -446,6 +455,7 @@ ecs_entity_t make_creature();
 ecs_entity_t make_human(s32 stat_scaling, f32 body_scaling);
 ecs_entity_t make_slime(s32 stat_scaling, f32 body_scaling);
 ecs_entity_t make_tentacle(s32 stat_scaling, f32 body_scaling);
+ecs_entity_t make_tubeman(s32 stat_scaling, f32 body_scaling);
 
 void hand_cast_add_condition(ecs_entity_t entity, Condition_Effect_Type type);
 void attacker_add_condition(ecs_entity_t attacker, ecs_entity_t victim, Condition_Effect_Type type);
@@ -472,6 +482,7 @@ void team_add_creature(ecs_entity_t entity, u64 team);
 void team_remove_creature(ecs_entity_t entity, u64 team);
 
 b32 is_entity_friendly(ecs_entity_t self, ecs_entity_t other);
+b32 is_entity_alive(ecs_entity_t entity);
 
 b32 array_add_unique(dyna ecs_entity_t* list, ecs_entity_t item);
 

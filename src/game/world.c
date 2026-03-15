@@ -106,6 +106,7 @@ void init_ecs()
         ECS_REGISTER_COMP(C_Human);
         ECS_REGISTER_COMP(C_Tentacle);
         ECS_REGISTER_COMP(C_Slime);
+        ECS_REGISTER_COMP(C_Tubeman);
         
         ECS_REGISTER_COMP_CB(C_Team, NULL, comp_team_dtor);
         ECS_REGISTER_COMP_CB(C_Hurt_Box, comp_hurt_box_ctor, comp_hurt_box_dtor);
@@ -119,6 +120,7 @@ void init_ecs()
         ECS_REGISTER_COMP(C_Creature_Normal);
         ECS_REGISTER_COMP(C_Creature_Elite);
         ECS_REGISTER_COMP(C_Creature_Boss);
+        ECS_REGISTER_COMP(C_Slappable);
         
         ECS_REGISTER_COMP(C_Event);
     }
@@ -147,8 +149,15 @@ void init_ecs()
     }
     
     {
+        ECS_REGISTER_SYSTEM(system_udpate_shattered_puppets);
+        ECS_REQUIRE_COMP(system_udpate_shattered_puppets, C_Puppet);
+        ECS_EXCLUDE_COMP(system_udpate_shattered_puppets, C_Health);
+    }
+    
+    {
         ECS_REGISTER_SYSTEM(system_update_puppet_animations);
         ECS_REQUIRE_COMP(system_update_puppet_animations, C_Puppet);
+        ECS_REQUIRE_COMP(system_update_puppet_animations, C_Health);
     }
     
     {
@@ -158,7 +167,6 @@ void init_ecs()
     {
         ECS_REGISTER_SYSTEM(system_update_build_spatial_grid);
         ECS_REQUIRE_COMP(system_update_build_spatial_grid, C_Puppet);
-        ECS_REQUIRE_COMP(system_update_build_spatial_grid, C_Team);
         ECS_REQUIRE_COMP(system_update_build_spatial_grid, C_AI);
     }
     
@@ -199,6 +207,17 @@ void init_ecs()
         ECS_REQUIRE_COMP(system_update_ai_slimes, C_Hurt_Box);
         ECS_REQUIRE_COMP(system_update_ai_slimes, C_Creature);
         ECS_REQUIRE_COMP(system_update_ai_slimes, C_Movement);
+    }
+    
+    {
+        ECS_REGISTER_SYSTEM(system_update_ai_tubemans);
+        ECS_REQUIRE_COMP(system_update_ai_tubemans, C_Puppet);
+        ECS_REQUIRE_COMP(system_update_ai_tubemans, C_AI);
+        ECS_REQUIRE_COMP(system_update_ai_tubemans, C_Team);
+        ECS_REQUIRE_COMP(system_update_ai_tubemans, C_Tubeman);
+        ECS_REQUIRE_COMP(system_update_ai_tubemans, C_Hurt_Box);
+        ECS_REQUIRE_COMP(system_update_ai_tubemans, C_Creature);
+        ECS_REQUIRE_COMP(system_update_ai_tubemans, C_Movement);
     }
     
     {
@@ -303,6 +322,7 @@ void world_arena_update()
         ECS_RUN_SYSTEM(system_update_conditions);
         ECS_RUN_SYSTEM(system_update_healths);
         ECS_RUN_SYSTEM(system_update_creature_teams);
+        ECS_RUN_SYSTEM(system_udpate_shattered_puppets);
         ECS_RUN_SYSTEM(system_update_puppet_animations);
     }
     
@@ -327,6 +347,7 @@ void world_arena_update()
                 ECS_RUN_SYSTEM(system_update_ai_humans);
                 ECS_RUN_SYSTEM(system_update_ai_tentacles);
                 ECS_RUN_SYSTEM(system_update_ai_slimes);
+                ECS_RUN_SYSTEM(system_update_ai_tubemans);
                 ECS_RUN_SYSTEM(system_update_hand_caster);
                 
                 u64* teams = cf_map_keys(world->team_creatures);
@@ -716,6 +737,11 @@ void world_arena_do_placement()
                         entity = make_tentacle(1, 1);
                         break;
                     }
+                    case Body_Type_Tubeman:
+                    {
+                        entity = make_tubeman(1, 1);
+                        break;
+                    }
                 }
                 
                 if (ENTITY_IS_VALID(entity))
@@ -724,6 +750,7 @@ void world_arena_do_placement()
                     set_team(entity, TOY_PLAYER_INDEX);
                     teleport(entity, world_position);
                     entity_apply_items(entity);
+                    ECS_ADD(entity, C_Slappable);
                 }
             }
         }
@@ -915,6 +942,18 @@ void event_handle_condition_added(ecs_entity_t attacker, ecs_entity_t victim, Co
             floating_text_add(victim, Floating_Text_Type_Negative, get_condition_name(type));
             break;
         }
+        case Condition_Effect_Type_Enrage:
+        {
+            if (ECS_HAS(victim, C_Tubeman))
+            {
+                C_Tubeman* tubeman = ECS_GET(victim, C_Tubeman);
+                tubeman->scale_target = 1.0f;
+                tubeman->scale_duration = 1.0f;
+                tubeman->scale_time = 0.0f;
+            }
+            floating_text_add(victim, Floating_Text_Type_Neutral, get_condition_name(type));
+            break;
+        }
         default:
         {
             floating_text_add(victim, Floating_Text_Type_Neutral, get_condition_name(type));
@@ -942,71 +981,68 @@ void event_handle_condition_removed(ecs_entity_t entity, Condition_Effect_Type t
         cf_map_del(creature->attributes, modifier_mask);
     }
     
+    floating_text_add_fmt(entity, Floating_Text_Type_Neutral, "<strike>%s</strike>", get_condition_name(type));
+    
     switch (type)
     {
         case Condition_Effect_Type_Grow_Arms:
         {
-            floating_text_add_fmt(entity, Floating_Text_Type_Neutral, "<strike>%s</strike>", get_condition_name(type));
             floating_text_add_fmt(entity, Floating_Text_Type_Neutral, "<strike>%s</strike>", get_condition_name(Condition_Effect_Type_Str_Up));
             break;
         }
         case Condition_Effect_Type_Enlarge:
         {
-            floating_text_add_fmt(entity, Floating_Text_Type_Neutral, "<strike>%s</strike>", get_condition_name(type));
             floating_text_add_fmt(entity, Floating_Text_Type_Neutral, "<strike>%s</strike>", get_condition_name(Condition_Effect_Type_Str_Up));
             floating_text_add_fmt(entity, Floating_Text_Type_Neutral, "<strike>%s</strike>", get_condition_name(Condition_Effect_Type_Agi_Down));
             break;
         }
         case Condition_Effect_Type_Shrink:
         {
-            floating_text_add_fmt(entity, Floating_Text_Type_Neutral, "<strike>%s</strike>", get_condition_name(type));
             floating_text_add_fmt(entity, Floating_Text_Type_Neutral, "<strike>%s</strike>", get_condition_name(Condition_Effect_Type_Agi_Up));
             floating_text_add_fmt(entity, Floating_Text_Type_Neutral, "<strike>%s</strike>", get_condition_name(Condition_Effect_Type_Str_Down));
             break;
         }
         case Condition_Effect_Type_HP_Up:
         {
-            floating_text_add_fmt(entity, Floating_Text_Type_Neutral, "<strike>%s</strike>", get_condition_name(type));
             floating_text_add_fmt(entity, Floating_Text_Type_Negative, "-%d", attributes.health);
             break;
         }
         case Condition_Effect_Type_Str_Up:
         {
-            floating_text_add_fmt(entity, Floating_Text_Type_Neutral, "<strike>%s</strike>", get_condition_name(type));
             break;
         }
         case Condition_Effect_Type_Agi_Up:
         {
-            floating_text_add_fmt(entity, Floating_Text_Type_Neutral, "<strike>%s</strike>", get_condition_name(type));
             break;
         }
         case Condition_Effect_Type_HP_Down:
         {
-            floating_text_add_fmt(entity, Floating_Text_Type_Neutral, "<strike>%s</strike>", get_condition_name(type));
             floating_text_add_fmt(entity, Floating_Text_Type_Positive, "+%d", attributes.health);
             break;
         }
         case Condition_Effect_Type_Str_Down:
         {
-            floating_text_add_fmt(entity, Floating_Text_Type_Neutral, "<strike>%s</strike>", get_condition_name(type));
             break;
         }
         case Condition_Effect_Type_Agi_Down:
         {
-            floating_text_add_fmt(entity, Floating_Text_Type_Neutral, "<strike>%s</strike>", get_condition_name(type));
             break;
         }
         case Condition_Effect_Type_Charmed:
         {
             C_Team* team = ECS_GET(entity, C_Team);
             team->next = team->base;
-            
-            floating_text_add_fmt(entity, Floating_Text_Type_Neutral, "<strike>%s</strike>", get_condition_name(type));
             break;
         }
-        default:
+        case Condition_Effect_Type_Enrage:
         {
-            floating_text_add_fmt(entity, Floating_Text_Type_Neutral, "<strike>%s</strike>", get_condition_name(type));
+            if (ECS_HAS(entity, C_Tubeman))
+            {
+                C_Tubeman* tubeman = ECS_GET(entity, C_Tubeman);
+                tubeman->scale_target = 0.25f;
+                tubeman->scale_duration = 1.0f;
+                tubeman->scale_time = 0.0f;
+            }
             break;
         }
     }
@@ -1157,6 +1193,7 @@ ecs_ret_t system_handle_events(ecs_t* ecs, ecs_entity_t* entities, size_t entity
             {
                 const char* tagged_victim = get_color_tagged_name_ex(event->died.name, event->died.team);
                 game_ui_log_died(tagged_victim);
+                
                 break;
             }
             case Event_Type_Hand_Caster_Select_Spell:
@@ -1299,6 +1336,10 @@ ecs_ret_t system_update_healths(ecs_t* ecs, ecs_entity_t* entities, size_t entit
     ecs_comp_t comp_creature = ECS_GET_COMP(C_Creature);
     
     ecs_comp_t comp_team = ECS_GET_COMP(C_Team);
+    ecs_comp_t comp_ai = ECS_GET_COMP(C_AI);
+    ecs_comp_t comp_movement = ECS_GET_COMP(C_Movement);
+    ecs_comp_t comp_puppet = ECS_GET_COMP(C_Puppet);
+    
     ecs_comp_t comp_creature_normal = ECS_GET_COMP(C_Creature_Normal);
     ecs_comp_t comp_creature_elite = ECS_GET_COMP(C_Creature_Elite);
     ecs_comp_t comp_creature_boss = ECS_GET_COMP(C_Creature_Boss);
@@ -1312,6 +1353,7 @@ ecs_ret_t system_update_healths(ecs_t* ecs, ecs_entity_t* entities, size_t entit
         
         *health = cf_min(*health, attributes.health);
         
+        // handle death
         if (*health <= 0)
         {
             u64 team = 0;
@@ -1331,7 +1373,23 @@ ecs_ret_t system_update_healths(ecs_t* ecs, ecs_entity_t* entities, size_t entit
             }
             
             make_event_died(entity, creature->name, team);
-            ecs_destroy(ecs, entity);
+            ecs_remove(ecs, entity, comp_team);
+            ecs_remove(ecs, entity, comp_ai);
+            ecs_remove(ecs, entity, comp_health);
+            
+            if (ecs_has(ecs, entity, comp_movement))
+            {
+                C_Movement* movement = ecs_get(ecs, entity, comp_movement);
+                movement->direction = cf_v2(0, 0);
+            }
+            
+            if (ecs_has(ecs, entity, comp_puppet))
+            {
+                C_Puppet* puppet = ecs_get(ecs, entity, comp_puppet);
+                body_shatter(&puppet->body);
+            }
+            
+            //ecs_destroy(ecs, entity);
         }
     }
     
@@ -1373,13 +1431,13 @@ ecs_ret_t system_update_creature_teams(ecs_t* ecs, ecs_entity_t* entities, size_
     return 0;
 }
 
-ecs_ret_t system_update_puppet_animations(ecs_t* ecs, ecs_entity_t* entities, size_t entity_count, void* udata)
+ecs_ret_t system_udpate_shattered_puppets(ecs_t* ecs, ecs_entity_t* entities, size_t entity_count, void* udata)
 {
     World* world = &s_app->world;
     
     ecs_comp_t comp_puppet = ECS_GET_COMP(C_Puppet);
     
-    f32 dt = world->dt;
+    f32 gravity = -1000.0f;
     
     for (size_t index = 0; index < entity_count; ++index)
     {
@@ -1389,6 +1447,43 @@ ecs_ret_t system_update_puppet_animations(ecs_t* ecs, ecs_entity_t* entities, si
         
         CF_Aabb local_bounds = world->bounds;
         local_bounds.min.y = cf_max(local_bounds.min.y, body->position.y);
+        
+        for (s32 index = 0; index < cf_array_count(body->accelerations); ++index)
+        {
+            body->accelerations[index].y += gravity;
+        }
+        
+        body_apply_friction(body);
+        body_verlet(body);
+        body_satisfy_constraints(body, local_bounds);
+        body_acceleration_reset(body);
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_puppet_animations(ecs_t* ecs, ecs_entity_t* entities, size_t entity_count, void* udata)
+{
+    World* world = &s_app->world;
+    
+    ecs_comp_t comp_puppet = ECS_GET_COMP(C_Puppet);
+    ecs_comp_t comp_health = ECS_GET_COMP(C_Health);
+    
+    UNUSED(comp_health);
+    
+    for (size_t index = 0; index < entity_count; ++index)
+    {
+        ecs_entity_t entity = entities[index];
+        C_Puppet* puppet = ecs_get(ecs, entity, comp_puppet);
+        Body* body = &puppet->body;
+        
+        CF_Aabb local_bounds = world->bounds;
+        local_bounds.min.y = cf_max(local_bounds.min.y, body->position.y);
+        
+        if (COROUTINE_IS_RUNNING(puppet->action_co))
+        {
+            cf_coroutine_resume(puppet->action_co);
+        }
         
         body_stabilize(body);
         body_verlet(body);
@@ -1409,10 +1504,12 @@ ecs_ret_t system_update_prebuild_spatial_grid(ecs_t* ecs, ecs_entity_t* entities
 ecs_ret_t system_update_build_spatial_grid(ecs_t* ecs, ecs_entity_t* entities, size_t entity_count, void* udata)
 {
     ecs_comp_t comp_puppet = ECS_GET_COMP(C_Puppet);
-    ecs_comp_t comp_team = ECS_GET_COMP(C_Team);
     ecs_comp_t comp_ai = ECS_GET_COMP(C_AI);
     
     UNUSED(comp_ai);
+    
+    ecs_comp_t comp_team = ECS_GET_COMP(C_Team);
+    ecs_comp_t comp_slappable = ECS_GET_COMP(C_Slappable);
     
     Spatial_Map* spatial_map = &s_app->world.spatial_map;
     
@@ -1420,9 +1517,16 @@ ecs_ret_t system_update_build_spatial_grid(ecs_t* ecs, ecs_entity_t* entities, s
     {
         ecs_entity_t entity = entities[index];
         C_Puppet* puppet = ecs_get(ecs, entity, comp_puppet);
-        C_Team* team = ecs_get(ecs, entity, comp_team);
         
-        spatial_map_push(spatial_map, team->current, entity, body_get_bounds(&puppet->body));
+        if (ecs_has(ecs, entity, comp_team))
+        {
+            C_Team* team = ecs_get(ecs, entity, comp_team);
+            spatial_map_push(spatial_map, team->current, entity, body_get_bounds(&puppet->body));
+        }
+        if (ecs_has(ecs, entity, comp_slappable))
+        {
+            spatial_map_push(spatial_map, TOY_SLAP_INDEX, entity, body_get_bounds(&puppet->body));
+        }
     }
     
     if (BIT_IS_SET(s_app->debug_state, Debug_State_Body_Bounds))
@@ -1486,8 +1590,15 @@ ecs_ret_t system_update_hurt_boxes(ecs_t* ecs, ecs_entity_t* entities, size_t en
         C_Hurt_Box* hurt_box = ecs_get(ecs, entity, comp_hurt_box);
         Body* body = &puppet->body;
         
+        u64 target_team_mask = ~(BIT(team->current));
+        BIT_UNSET(target_team_mask, TOY_SLAP_INDEX);
+        
+        // grab all hitable hitenties within hurt bounds
         CF_Aabb bounds = body_get_particle_bounds(body, body->hurt_particles, cf_array_count(body->hurt_particles));
-        fixed ecs_entity_t * queries = spatial_map_query(spatial_map, ~BIT(team->current), bounds);
+        fixed ecs_entity_t * queries = spatial_map_query(spatial_map, target_team_mask, bounds);
+        CF_V2 attack_force = cf_extents(bounds);
+        // scale up force so it's more impactful
+        attack_force.x *= body->facing_direction * 200.0f;
         
         if (cf_array_count(body->hurt_particles))
         {
@@ -1572,6 +1683,10 @@ ecs_ret_t system_update_hurt_boxes(ecs_t* ecs, ecs_entity_t* entities, size_t en
                     if (array_add_unique(hurt_box->hits, queries[query_index]))
                     {
                         ecs_entity_t victim = queries[query_index];
+                        C_Puppet* victim_puppet = ecs_get(ecs, victim, comp_puppet);
+                        
+                        body_apply_force( &victim_puppet->body, attack_force);
+                        
                         make_event_damage(entity, victim, sources);
                         make_event_hit(entity, victim);
                         
@@ -1585,6 +1700,7 @@ ecs_ret_t system_update_hurt_boxes(ecs_t* ecs, ecs_entity_t* entities, size_t en
         }
         else
         {
+            // currently not attacking so clear out hit list
             cf_array_clear(hurt_box->hits);
         }
     }
@@ -1620,13 +1736,11 @@ ecs_ret_t system_update_ai_humans(ecs_t* ecs, ecs_entity_t* entities, size_t ent
         C_Movement* movement = ecs_get(ecs, entity, comp_movement);
         
         Body* body = &puppet->body;
-        b32 is_in_action = COROUTINE_IS_RUNNING(puppet->action_co);
         movement->direction = cf_v2(0, 0);
         
-        if (is_in_action)
+        if (COROUTINE_IS_RUNNING(puppet->action_co))
         {
             ai->attack_delay = agility_to_attack_rate(creature);
-            cf_coroutine_resume(puppet->action_co);
             continue;
         }
         
@@ -1646,15 +1760,18 @@ ecs_ret_t system_update_ai_humans(ecs_t* ecs, ecs_entity_t* entities, size_t ent
         ai->attack_delay -= dt;
         Body* target_body = NULL;
         
-        if (ENTITY_IS_VALID(ai->target) && !is_entity_friendly(entity, ai->target))
         {
+            u64 target_team_mask = ~(BIT(team->current));
+            BIT_UNSET(target_team_mask, TOY_SLAP_INDEX);
+            ai->target = find_nearest_creature(body->position, target_team_mask);
+            
+            if (!(is_entity_alive(ai->target) && !is_entity_friendly(entity, ai->target)))
+            {
+                continue;
+            }
+            
             C_Puppet* target_puppet = ecs_get(ecs, ai->target, comp_puppet);
             target_body = &target_puppet->body;
-        }
-        else
-        {
-            ai->target = find_nearest_creature(body->position, ~(team->current));
-            continue;
         }
         
         CF_V2 move_direction = walk_direction_to_attack(body, target_body);
@@ -1727,7 +1844,6 @@ ecs_ret_t system_update_ai_tentacles(ecs_t* ecs, ecs_entity_t* entities, size_t 
         if (COROUTINE_IS_RUNNING(puppet->action_co))
         {
             ai->attack_delay = agility_to_attack_rate(creature);
-            cf_coroutine_resume(puppet->action_co);
             continue;
         }
         
@@ -1736,7 +1852,10 @@ ecs_ret_t system_update_ai_tentacles(ecs_t* ecs, ecs_entity_t* entities, size_t 
         
         if (ai->attack_delay <= 0.0f)
         {
-            ecs_entity_t target = find_nearest_creature(body->position, ~(team->current));
+            u64 target_team_mask = ~(BIT(team->current));
+            BIT_UNSET(target_team_mask, TOY_SLAP_INDEX);
+            
+            ecs_entity_t target = find_nearest_creature(body->position, target_team_mask);
             
             if (ENTITY_IS_VALID(target))
             {
@@ -1794,22 +1913,24 @@ ecs_ret_t system_update_ai_slimes(ecs_t* ecs, ecs_entity_t* entities, size_t ent
         if (COROUTINE_IS_RUNNING(puppet->action_co))
         {
             ai->attack_delay = agility_to_attack_rate(creature);
-            cf_coroutine_resume(puppet->action_co);
             continue;
         }
         
         ai->attack_delay -= dt;
         Body* target_body = NULL;
         
-        if (ENTITY_IS_VALID(ai->target) && !is_entity_friendly(entity, ai->target))
         {
+            u64 target_team_mask = ~(BIT(team->current));
+            BIT_UNSET(target_team_mask, TOY_SLAP_INDEX);
+            ai->target = find_nearest_creature(body->position, target_team_mask);
+            
+            if (!(is_entity_alive(ai->target) && !is_entity_friendly(entity, ai->target)))
+            {
+                continue;
+            }
+            
             C_Puppet* target_puppet = ecs_get(ecs, ai->target, comp_puppet);
             target_body = &target_puppet->body;
-        }
-        else
-        {
-            ai->target = find_nearest_creature(body->position, ~(team->current));
-            continue;
         }
         
         CF_V2 move_direction = walk_direction_to_attack(body, target_body);
@@ -1840,6 +1961,111 @@ ecs_ret_t system_update_ai_slimes(ecs_t* ecs, ecs_entity_t* entities, size_t ent
             else
             {
                 movement->direction = move_direction;
+            }
+        }
+    }
+    
+    return 0;
+}
+
+ecs_ret_t system_update_ai_tubemans(ecs_t* ecs, ecs_entity_t* entities, size_t entity_count, void* udata)
+{
+    World* world = &s_app->world;
+    
+    ecs_comp_t comp_puppet = ECS_GET_COMP( C_Puppet);
+    ecs_comp_t comp_ai = ECS_GET_COMP(C_AI);
+    ecs_comp_t comp_team = ECS_GET_COMP(C_Team);
+    ecs_comp_t comp_tubeman = ECS_GET_COMP(C_Tubeman);
+    ecs_comp_t comp_hurt_box = ECS_GET_COMP(C_Hurt_Box);
+    ecs_comp_t comp_creature = ECS_GET_COMP(C_Creature);
+    ecs_comp_t comp_movement = ECS_GET_COMP(C_Movement);
+    
+    f32 dt = world->dt;
+    
+    b32 apply_blow_x = cf_sin(world->time) > 0.0f;
+    CF_V2 sway_force = cf_v2(0.0f, 2000.0f);
+    if (apply_blow_x)
+    {
+        sway_force.x = 1250.0f;
+    }
+    
+    for (size_t index = 0; index < entity_count; ++index)
+    {
+        ecs_entity_t entity = entities[index];
+        C_Puppet* puppet = ecs_get(ecs, entity, comp_puppet);
+        C_AI* ai = ecs_get(ecs, entity, comp_ai);
+        C_Team* team = ecs_get(ecs, entity, comp_team);
+        C_Tubeman* tubeman = ecs_get(ecs, entity, comp_tubeman);
+        C_Hurt_Box* hurt_box = ecs_get(ecs, entity, comp_hurt_box);
+        C_Creature* creature = ecs_get(ecs, entity, comp_creature);
+        C_Movement* movement = ecs_get(ecs, entity, comp_movement);
+        Body* body = &puppet->body;
+        
+        b32 is_big_enough_to_attack = false;
+        // update dynamic scaling when tubeman is inflated or deflated
+        tubeman->scale_time += dt;
+        f32 scale_t = cf_clamp01(tubeman->scale_time / tubeman->scale_duration);
+        puppet->proportions->scale = cf_lerp(puppet->proportions->scale, tubeman->scale_target, scale_t);
+        if (cf_abs(puppet->proportions->scale - tubeman->scale_target) > 1e-7f)
+        {
+            Body_Proportions proportions = accumulate_body_proportions(puppet->proportions);
+            body_scale(body, proportions);
+        }
+        
+        // apply sway only when inflated
+        if (tubeman->scale_target > 0.75f)
+        {
+            body_tubeman_sway(body, sway_force);
+            is_big_enough_to_attack = true;
+        }
+        
+        if (COROUTINE_IS_RUNNING(puppet->action_co))
+        {
+            ai->attack_delay = agility_to_attack_rate(creature);
+            continue;
+        }
+        
+        ai->attack_delay -= dt;
+        f32 attack_range = body->height;
+        
+        if (ai->attack_delay <= 0.0f)
+        {
+            if (!is_big_enough_to_attack)
+            {
+                continue;
+            }
+            
+            u64 target_team_mask = ~(BIT(team->current));
+            BIT_UNSET(target_team_mask, TOY_SLAP_INDEX);
+            ecs_entity_t target = find_nearest_creature(body->position, target_team_mask);
+            
+            if (ENTITY_IS_VALID(target))
+            {
+                ai->target = target;
+                C_Puppet* target_puppet = ecs_get(ecs, target, comp_puppet);
+                Body* target_body = &target_puppet->body;
+                CF_V2 dp = cf_sub(target_puppet->body.position, body->position);
+                CF_V2 abs_dp = cf_abs(dp);
+                f32 dx = abs_dp.x - cf_half_width(body_get_bounds(target_body));
+                
+                if (abs_dp.y < body->height * 0.1f && dx < attack_range)
+                {
+                    body->facing_direction = dp.x < 0 ? -1.0f : 1.0f;
+                    cf_destroy_coroutine(puppet->action_co);
+                    puppet->action_co = cf_make_coroutine(body_tubeman_punch_co, 0, body);
+                    hurt_box->damage = strength_to_damage(creature);
+                    
+                    cf_coroutine_push(puppet->action_co, target_body, sizeof(*target_body));
+                }
+                else
+                {
+                    body->facing_direction = dp.x < 0 ? -1.0f : 1.0f;
+                    cf_destroy_coroutine(puppet->action_co);
+                    puppet->action_co = cf_make_coroutine(body_tubeman_pull_co, 0, body);
+                    hurt_box->damage = strength_to_damage(creature);
+                    
+                    cf_coroutine_push(puppet->action_co, &target, sizeof(target));
+                }
             }
         }
     }
@@ -2695,6 +2921,46 @@ ecs_entity_t make_tentacle(s32 stat_scaling, f32 body_scaling)
     return entity;
 }
 
+ecs_entity_t make_tubeman(s32 stat_scaling, f32 body_scaling)
+{
+    ecs_entity_t entity = make_creature();
+    C_Puppet* puppet = ECS_GET(entity, C_Puppet);
+    C_AI* ai = ECS_GET(entity, C_AI);
+    C_Health* health = ECS_GET(entity, C_Health);
+    C_Creature* creature = ECS_GET(entity, C_Creature);
+    C_Tubeman* tubeman = ECS_ADD(entity, C_Tubeman);
+    
+    puppet->body = make_tubeman_body(TUBEMAN_HEIGHT);
+    
+    puppet->body.is_locked[Body_Tubeman_Segment_Left_0] = true;
+    puppet->body.is_locked[Body_Tubeman_Segment_Right_0] = true;
+    
+    creature->name = generate_tubeman_name();
+    Attributes attributes = { 0 };
+    attributes.health = 20 * stat_scaling;
+    attributes.strength = 6 * stat_scaling;
+    attributes.agility = 10 * stat_scaling;
+    
+    {
+        Body* body = &puppet->body;
+        puppet->proportions->scale *= body_scaling;
+        body_scale(body, *puppet->proportions);
+        body_stabilize(&puppet->body);
+    }
+    
+    *health = attributes.health;
+    
+    cf_map_set(creature->attributes, Condition_Effect_Type_None, attributes);
+    
+    ai->attack_delay = agility_to_attack_rate(creature);
+    
+    tubeman->scale_target = 0.25f;
+    tubeman->scale_duration = 1.0f;
+    tubeman->scale_time = 0.0f;
+    
+    return entity;
+}
+
 void hand_cast_add_condition(ecs_entity_t entity, Condition_Effect_Type type)
 {
     if (ECS_HAS(entity, C_Condition))
@@ -2943,22 +3209,26 @@ ecs_entity_t find_nearest_creature(CF_V2 position, u64 team_mask)
     World* world = &s_app->world;
     ecs_entity_t found = (ecs_entity_t){ -1 };
     
-    u64* masks = cf_map_keys(world->team_creatures);
+    u64* teams = cf_map_keys(world->team_creatures);
     CF_V2 closest_distance = cf_v2(F32_MAX, F32_MAX);
     CF_V2 closest_position = position;
     
-    for (s32 mask_index = 0; mask_index < cf_map_size(world->team_creatures); ++mask_index)
+    for (s32 team_index = 0; team_index < cf_map_size(world->team_creatures); ++team_index)
     {
-        if (!BIT_IS_SET_EX(masks[mask_index], team_mask))
+        if (!BIT_IS_SET(team_mask, teams[team_index]))
         {
             continue;
         }
         
-        dyna ecs_entity_t* creatures = world->team_creatures[mask_index];
+        dyna ecs_entity_t* creatures = world->team_creatures[team_index];
         for (s32 index = 0; index < cf_array_count(creatures); ++index)
         {
             ecs_entity_t creature = creatures[index];
             C_Puppet* puppet = ECS_GET(creature, C_Puppet);
+            if (!ECS_HAS(creature, C_Health))
+            {
+                continue;
+            }
             
             CF_V2 dp = cf_sub(puppet->body.position, position);
             CF_V2 abs_dp = cf_abs(dp);
@@ -3127,6 +3397,11 @@ b32 is_entity_friendly(ecs_entity_t self, ecs_entity_t other)
     return is_friendly;
 }
 
+b32 is_entity_alive(ecs_entity_t entity)
+{
+    return ENTITY_IS_VALID(entity) && ECS_HAS(entity, C_Health);
+}
+
 b32 array_add_unique(dyna ecs_entity_t* list, ecs_entity_t item)
 {
     b32 can_add = true;
@@ -3199,7 +3474,7 @@ Body_Proportions accumulate_body_proportions(CF_MAP(Body_Proportions) proportion
         
         total.head_scale += proportions[index].head_scale;
         total.neck_thickness += proportions[index].neck_thickness;
-        total.torso_chubiness += proportions[index].torso_chubiness;
+        total.torso_chubbiness += proportions[index].torso_chubbiness;
         
         total.upper_arm_thickness += proportions[index].upper_arm_thickness;
         total.lower_arm_thickness += proportions[index].lower_arm_thickness;
@@ -3298,7 +3573,7 @@ const char* get_color_tagged_name_ex(const char* name, u64 team)
     if (name)
     {
         CF_Color color = get_team_color(team);
-        tagged_name = scratch_fmt("<color color=#%X>%s</color>", cf_color_to_pixel(color).val, name);
+        name = scratch_fmt("<color color=#%X>%s</color>", cf_color_to_pixel(color).val, name);
     }
     return name;
 }
