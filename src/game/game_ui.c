@@ -1241,7 +1241,6 @@ void game_ui_do_arena_result()
                         inventory_add_body(inventory, body_types[body_index], body_counts[body_index]);
                     }
                 }
-                game_ui_clear_logs();
                 world_set_state(World_State_Overworld);
             }
             
@@ -2422,6 +2421,7 @@ void game_ui_do_play()
     {
         case World_State_Overworld:
         {
+            game_ui_clear_logs();
             overworld_ui();
             break;
         }

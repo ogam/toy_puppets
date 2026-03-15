@@ -554,10 +554,20 @@ void world_arena_enter_placement(CF_Rnd* rnd, s32 enemy_count, s32 elite_count, 
     UNUSED(boss_count);
     
     World* world = &s_app->world;
+    Inventory* inventory = &world->inventory;
     world_set_state(World_State_Arena_Placement);
     
     world_clear();
-    world->placement_type = Body_Type_Human;
+    
+    world->placement_type = Body_Type_Human;;
+    for (s32 index = 0; index < cf_array_count(inventory->bodies); ++index)
+    {
+        if (inventory->bodies[index] > 0)
+        {
+            world->placement_type = (Body_Type)index;
+            break;
+        }
+    }
     
     //  @todo:  setup bounds based off of room
     {
